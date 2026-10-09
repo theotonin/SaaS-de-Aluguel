@@ -1,14 +1,18 @@
 import { RotateCcw, ChevronRight, Truck } from "lucide-react";
 
-import { Badge, Heading, Empty, date } from "../components";
+import { Badge, Heading, Empty, date, Pagination } from "../components";
 
-import type { Rental } from "../types";
+import type { Rental, PageInfo } from "../types";
 
 export function AgendaScreen({
   activeRentals,
+  pageInfo,
+  onPage,
   openRental,
 }: {
   activeRentals: Rental[];
+  pageInfo: PageInfo;
+  onPage: (page: number) => void;
   openRental: (rental: Rental) => void;
 }) {
   return (
@@ -20,7 +24,7 @@ export function AgendaScreen({
       <section className="panel">
         <div className="panel-heading">
           <h2>Saídas e retornos</h2>
-          <span className="muted">Horários de São Paulo</span>
+          <span className="muted">{pageInfo.total} reservas ativas · horários de São Paulo</span>
         </div>
         {activeRentals.length ? (
           <div className="timeline">
@@ -68,6 +72,7 @@ export function AgendaScreen({
           </Empty>
         )}
       </section>
+      <Pagination {...pageInfo} onPage={onPage}/>
     </>
   );
 }

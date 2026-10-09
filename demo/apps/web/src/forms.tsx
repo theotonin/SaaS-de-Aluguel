@@ -338,15 +338,15 @@ export function RentalForm({
   const tomorrow = new Date(now.getTime() + 86400000);
   const [start, setStart] = useState(inputDate(now)),
     [end, setEnd] = useState(inputDate(tomorrow));
-  const [customerSearch,setCustomerSearch]=useState(''),[customerPage,setCustomerPage]=useState(1),[customerPages,setCustomerPages]=useState(1),[customerOptions,setCustomerOptions]=useState(customers),[selectedCustomer,setSelectedCustomer]=useState<Customer|null>(null);
-  const [materialSearch,setMaterialSearch]=useState(''),[materialPage,setMaterialPage]=useState(1),[materialPages,setMaterialPages]=useState(1),[itemCache,setItemCache]=useState(items);
+  const [customerSearch,setCustomerSearch]=useState(''),[customerPage,setCustomerPage]=useState(1),[customerPages,setCustomerPages]=useState(1),[customerOptions,setCustomerOptions]=useState(customers),[customerCursors,setCustomerCursors]=useState<Record<number,string>>({1:''}),[selectedCustomer,setSelectedCustomer]=useState<Customer|null>(null);
+  const [materialSearch,setMaterialSearch]=useState(''),[materialPage,setMaterialPage]=useState(1),[materialPages,setMaterialPages]=useState(1),[materialCursors,setMaterialCursors]=useState<Record<number,string>>({1:''}),[itemCache,setItemCache]=useState(items);
   const [lines, setLines] = useState([{ itemId: "", quantity: 1 }]);
   const [delivery, setDelivery] = useState("0"),
     [discount, setDiscount] = useState("0");
   const [available, setAvailable] = useState<Item[]>([]),
     [availabilityError, setAvailabilityError] = useState("");
   const operation = useRef(crypto.randomUUID());
-  useEffect(()=>{let active=true;const timer=window.setTimeout(()=>{request<PageResponse<Customer>>(`/customers?page=${customerPage}&limit=100&search=${encodeURIComponent(customerSearch)}`).then(result=>{if(!active)return;setCustomerPages(result.pages);setCustomerOptions(current=>{const loaded=customerPage===1?result.items:[...current,...result.items];return selectedCustomer&&!loaded.some(item=>item.id===selectedCustomer.id)?[selectedCustomer,...loaded]:loaded;});}).catch(e=>{if(active)setAvailabilityError((e as Error).message);});},250);return()=>{active=false;clearTimeout(timer);};},[customerSearch,customerPage]);
+  useEffect(()=>{let active=true;const timer=window.setTimeout(()=>{const cursor=customerCursors[customerPage]??'';const params=new URLSearchParams({page:String(customerPage),limit:'100',search:customerSearch});if(cursor)params.set('cursor',cursor);request<PageResponse<Customer>>(`/customers?${params}`).then(result=>{if(!active)return;setCustomerPages(result.pages);if(result.nextCursor)setCustomerCursors(value=>({...value,[result.page+1]:result.nextCursor!}));setCustomerOptions(current=>{const loaded=customerPage===1?result.items:[...current,...result.items];return selectedCustomer&&!loaded.some(item=>item.id===selectedCustomer.id)?[selectedCustomer,...loaded]:loaded;});}).catch(e=>{if(active)setAvailabilityError((e as Error).message);});},250);return()=>{active=false;clearTimeout(timer);};},[customerSearch,customerPage,customerCursors[customerPage]]);
   useEffect(() => {
     let active = true;
     setAvailabilityError("");
@@ -355,14 +355,13 @@ export function RentalForm({
         const from = isoDate(start),
           to = isoDate(end);
         rentalDays(from, to);
+        const params=new URLSearchParams({start:from,end:to,page:String(materialPage),limit:'100',search:materialSearch});
+        const cursor=materialCursors[materialPage];if(cursor)params.set('cursor',cursor);
         request<PageResponse<Item>>(
-          "/availability?start=" +
-            encodeURIComponent(from) +
-            "&end=" +
-            encodeURIComponent(to)+`&page=${materialPage}&limit=100&search=${encodeURIComponent(materialSearch)}`,
+          "/availability?"+params,
         )
           .then((d) => {
-            if (active) {setMaterialPages(d.pages);setAvailable(current=>materialPage===1?d.items:[...current,...d.items.filter(item=>!current.some(x=>x.id===item.id))]);setItemCache(current=>[...current,...d.items.filter(item=>!current.some(x=>x.id===item.id))]);}
+            if (active) {setMaterialPages(d.pages);if(d.nextCursor)setMaterialCursors(value=>({...value,[d.page+1]:d.nextCursor!}));setAvailable(current=>materialPage===1?d.items:[...current,...d.items.filter(item=>!current.some(x=>x.id===item.id))]);setItemCache(current=>[...current,...d.items.filter(item=>!current.some(x=>x.id===item.id))]);}
           })
           .catch((e) => {
             if (active) setAvailabilityError(e.message);
@@ -375,7 +374,7 @@ export function RentalForm({
       active = false;
       clearTimeout(timer);
     };
-  }, [start, end, materialSearch, materialPage]);
+  }, [start, end, materialSearch, materialPage, materialCursors[materialPage]]);
   let days = 0,
     total = 0;
   try {
@@ -421,7 +420,7 @@ export function RentalForm({
       <div className="form-grid">
         <Field label="Cliente">
           {(id) => (
-            <div><input aria-label="Buscar cliente" placeholder="Buscar cliente…" value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);setCustomerPage(1);}}/><select id={id} name="customer" required autoFocus value={selectedCustomer?.id??''} onChange={e=>setSelectedCustomer(customerOptions.find(c=>c.id===e.target.value)??null)}>
+            <div><input aria-label="Buscar cliente" placeholder="Buscar cliente…" value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);setCustomerPage(1);setCustomerCursors({1:''});setCustomerOptions(selectedCustomer?[selectedCustomer]:[]);}}/><select id={id} name="customer" required autoFocus value={selectedCustomer?.id??''} onChange={e=>setSelectedCustomer(customerOptions.find(c=>c.id===e.target.value)??null)}>
               <option value="">Selecione o cliente</option>
               {customerOptions.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -468,7 +467,7 @@ export function RentalForm({
           <div className="rental-line" key={index}>
             <Field label={"Material " + (index + 1)}>
               {(id) => (
-                <div><input aria-label="Buscar material" placeholder="Buscar material…" value={materialSearch} onChange={e=>{setMaterialSearch(e.target.value);setMaterialPage(1);}}/><select
+                <div><input aria-label="Buscar material" placeholder="Buscar material…" value={materialSearch} onChange={e=>{setMaterialSearch(e.target.value);setMaterialPage(1);setMaterialCursors({1:''});setAvailable([]);}}/><select
                   id={id}
                   required
                   value={line.itemId}

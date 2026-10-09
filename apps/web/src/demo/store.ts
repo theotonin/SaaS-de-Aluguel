@@ -2,6 +2,7 @@ import {returnInput,maintenanceInput,closeInput,reopenInput} from '../../../../p
 import {financeInput} from '../../../../packages/contracts/finance';
 import {financeSummary,assertFinanceEntry} from '../../../../packages/domain/payments';
 import {applyReturn} from '../../../../packages/domain/returns';
+import {exactMoney} from '../../../../packages/domain/money';
 import { matchesSearch } from '../search';
 import {
   companyInput,
@@ -59,7 +60,22 @@ export function createDemo(storage: Storage) {
   let state = load(storage),
     companyId = state.organizations[0].id;
   let role: User["role"] = "admin";
-  const paged=<T,>(all:T[],p:URLSearchParams)=>{const page=Number(p.get('page')??1),requested=Number(p.get('limit')??50);if(!Number.isInteger(page)||page<1||!Number.isInteger(requested)||requested<1)throw new DomainError('Página ou quantidade inválida.',400);const limit=Math.min(requested,100),search=p.get('search')??'',filtered=all.filter((row:any)=>matchesSearch(Object.values(row).filter(v=>typeof v==='string'||typeof v==='number').join(' '),search));return{items:filtered.slice((page-1)*limit,page*limit),total:filtered.length,page,limit,pages:Math.ceil(filtered.length/limit)};};
+  const encodeCursor = (value: unknown) =>
+    btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(value))))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  const decodeCursor = (value: string) => {
+    try {
+      const base = value.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = base + "=".repeat((4 - (base.length % 4)) % 4);
+      const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      throw new DomainError("Cursor inválido.", 400);
+    }
+  };
+  const paged=<T extends {id:string;name?:string;starts_at?:string}>(all:T[],p:URLSearchParams,sort:'name'|'rental'='name')=>{const page=Number(p.get('page')??1),requested=Number(p.get('limit')??50);if(!Number.isInteger(page)||page<1||!Number.isInteger(requested)||requested<1)throw new DomainError('Página ou quantidade inválida.',400);const limit=Math.min(requested,100),search=p.get('search')??'',cursorRaw=p.get('cursor'),cursor=cursorRaw?decodeCursor(cursorRaw):null;if(cursor&&(!cursor||cursor.v!==1||cursor.sort!==sort||typeof cursor.key!=='string'||typeof cursor.id!=='string'))throw new DomainError('Cursor inválido.',400);const filtered=all.filter((row:any)=>matchesSearch(Object.values(row).filter(v=>typeof v==='string'||typeof v==='number').join(' '),search)).sort((a,b)=>sort==='rental'?(Date.parse(b.starts_at!)-Date.parse(a.starts_at!))||a.id.localeCompare(b.id):String(a.name??'').toLocaleLowerCase().localeCompare(String(b.name??'').toLocaleLowerCase())||a.id.localeCompare(b.id));const after=cursor?filtered.filter(row=>sort==='rental'?(Date.parse(row.starts_at!)<Date.parse(cursor.key)||(row.starts_at===cursor.key&&row.id>cursor.id)):String(row.name??'').toLocaleLowerCase()>cursor.key||(String(row.name??'').toLocaleLowerCase()===cursor.key&&row.id>cursor.id)):filtered.slice((page-1)*limit);const window=after.slice(0,limit+1),hasMore=window.length>limit,items=window.slice(0,limit),last=items.at(-1),nextCursor=hasMore&&last?encodeCursor({v:1,sort,key:sort==='rental'?last.starts_at:String(last.name??'').toLocaleLowerCase(),id:last.id}):null;return{items,total:filtered.length,page,limit,pages:Math.ceil(filtered.length/limit),hasMore,nextCursor};};
   const localDate=(value:string)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   const session = (): User => ({
     id: "demo-" + role,
@@ -278,21 +294,23 @@ export function createDemo(storage: Storage) {
         result=paged(items,url.searchParams);
       } else if (route === "/rentals" && method === "GET") {
         const status=url.searchParams.get('status');if(status&&status!=='all'&&!['draft','sent','confirmed','separated','delivered','returned','closed','canceled'].includes(status))throw new DomainError('Etapa inválida.',400);
-        const all=data.rentals.map(detail).filter(r=>!status||status==='all'||r.status===status);result=paged(all,url.searchParams);
+        const all=data.rentals.map(detail).filter(r=>!status||status==='all'||r.status===status);result=paged(all,url.searchParams,'rental');
+      } else if(route==='/agenda'&&method==='GET'){
+        result=paged(data.rentals.filter(r=>['confirmed','separated','delivered'].includes(r.status)).map(detail),url.searchParams,'rental');
       } else if(route==='/overview'&&method==='GET'){
         const active=data.rentals.filter(r=>['confirmed','separated','delivered'].includes(r.status));
         result={active_count:active.length,open_count:data.rentals.filter(r=>['draft','sent'].includes(r.status)).length,active_value:active.reduce((sum,r)=>sum+BigInt(String(r.total)),0n).toString(),materials:data.items.length,upcoming:data.rentals.filter(r=>['confirmed','separated'].includes(r.status)&&Date.parse(r.starts_at)>=Date.now()).sort((a,b)=>Date.parse(a.starts_at)-Date.parse(b.starts_at)).slice(0,5).map(detail),latest:data.rentals.slice().sort((a,b)=>Number(b.number)-Number(a.number)).slice(0,5).map(detail)};
       } else if(route==='/today'&&method==='GET'){
-        const today=localDate(new Date().toISOString());result={pickups:data.rentals.filter(r=>localDate(r.starts_at)===today&&['confirmed','separated'].includes(r.status)).map(detail),returns:data.rentals.filter(r=>localDate(r.ends_at)===today&&r.status==='delivered').map(detail),overdue:data.rentals.filter(r=>r.status==='delivered'&&Date.parse(r.ends_at)<Date.now()).map(detail),maintenance:data.items.map(i=>({id:i.id,name:i.name,category:i.category,remaining_quantity:maintenanceQuantity(i.id)})).filter(i=>i.remaining_quantity>0)};
+        const today=localDate(new Date().toISOString()),pickups=data.rentals.filter(r=>localDate(r.starts_at)===today&&['confirmed','separated'].includes(r.status)).map(detail),returns=data.rentals.filter(r=>localDate(r.ends_at)===today&&r.status==='delivered').map(detail),overdue=data.rentals.filter(r=>r.status==='delivered'&&Date.parse(r.ends_at)<Date.now()).map(detail),maintenance=data.items.map(i=>({id:i.id,name:i.name,category:i.category,remaining_quantity:maintenanceQuantity(i.id)})).filter(i=>i.remaining_quantity>0);result={pickups,returns,overdue,maintenance,counts:{pickups:pickups.length,returns:returns.length,overdue:overdue.length,maintenance:maintenance.length}};
       } else if(route==='/finance/report'&&method==='GET'){
         if(!['admin','attendant'].includes(role))throw new DomainError('Você não tem permissão para consultar o financeiro.',403);
         const from=url.searchParams.get('from'),to=url.searchParams.get('to');if(!from||!to||from>to||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))throw new DomainError('Informe um período válido usando as datas inicial e final.',400);
-        const selected=data.rentals.filter(r=>['confirmed','separated','delivered','returned','closed'].includes(r.status)&&localDate(r.starts_at)>=from&&localDate(r.starts_at)<=to),allEntries=Object.values(data.finance??{}).flat();
+        const selected=data.rentals.filter(r=>['confirmed','separated','delivered','returned','closed','canceled'].includes(r.status)&&localDate(r.starts_at)>=from&&localDate(r.starts_at)<=to),allEntries=Object.values(data.finance??{}).flat();
         const within=allEntries.filter(e=>localDate(e.created_at)>=from&&localDate(e.created_at)<=to),sum=(entries:any[],kind:string):bigint=>entries.filter(e=>e.kind===kind).reduce((n,e)=>n+BigInt(String(e.amount)),0n);
         const received=sum(within,'payment')-sum(within,'refund'),depositReceived=sum(within,'deposit_received'),depositRefunded=sum(within,'deposit_refund'),expenses=role==='admin'?sum(within,'expense'):0n;
-        let receivable=0n,depositHeld=0n;for(const rental of selected){const entries=data.finance?.[rental.id]??[];const charged=BigInt(String(rental.total))+sum(entries,'charge')-sum(entries,'charge_reversal');receivable+=charged-sum(entries,'payment')+sum(entries,'refund');if(['confirmed','separated','delivered','returned'].includes(rental.status))depositHeld+=sum(entries,'deposit_received')-sum(entries,'deposit_refund');}
+        let receivable=0n,depositHeld=0n;for(const rental of selected){const entries=data.finance?.[rental.id]??[];const charged=(rental.status==='canceled'?0n:BigInt(String(rental.total)))+sum(entries,'charge')-sum(entries,'charge_reversal');receivable+=charged-sum(entries,'payment')+sum(entries,'refund');if(['confirmed','separated','delivered','returned','canceled'].includes(rental.status))depositHeld+=sum(entries,'deposit_received')-sum(entries,'deposit_refund');}
         const report={from,to,received:received.toString(),receivable:(receivable>0n?receivable:0n).toString(),depositReceived:depositReceived.toString(),depositRefunded:depositRefunded.toString(),depositMovement:(depositReceived-depositRefunded).toString(),depositHeld:(depositHeld>0n?depositHeld:0n).toString(),expenses:role==='admin'?expenses.toString():null,operatingNet:role==='admin'?(received-expenses).toString():null,cashNet:role==='admin'?(received+depositReceived-depositRefunded-expenses).toString():null,dateRules:{ledger:'Lançamentos agrupados pela data de registro em São Paulo; período inicial/final inclusivo.',receivables:'Saldo calculado pelo valor da reserva e lançamentos atuais, agrupado pelo início da reserva em São Paulo.',deposits:'Cauções retidas pertencem às reservas ativas e devolvidas no período por data de lançamento; depósitos não são receita.'}};
-        if(url.searchParams.get('format')==='csv'){const rows=[['Empresa',org.name],['Período',`${from} a ${to}`],['Recebido líquido (data de lançamento)',report.received],['A receber (data de início da reserva)',report.receivable],['Cauções recebidas (movimento no período)',report.depositReceived],['Cauções devolvidas (movimento no período)',report.depositRefunded],['Variação de cauções retidas no período',report.depositMovement],['Cauções retidas nas reservas do período',report.depositHeld],['Despesas (data de lançamento)',report.expenses??'Restrito'],['Resultado operacional recebido menos despesas',report.operatingNet??'Restrito'],['Movimento de caixa incluindo cauções',report.cashNet??'Restrito']];result={csv:rows.map(row=>row.map(v=>{const s=String(v),safe=/^[\t\r ]*[=+\-@]/.test(s)?`'${s}`:s;return `"${safe.replaceAll('"','""')}"`;}).join(';')).join('\r\n')+'\r\n'};}else result=report;
+        if(url.searchParams.get('format')==='csv'){const brl=(value:unknown)=>value===null||value===undefined?'Restrito':exactMoney(String(value));const rows=[['Empresa',org.name],['Período',`${from} a ${to}`],['Recebido líquido em BRL (data de lançamento)',brl(report.received)],['A receber em BRL (data de início da reserva)',brl(report.receivable)],['Cauções recebidas em BRL (movimento no período)',brl(report.depositReceived)],['Cauções devolvidas em BRL (movimento no período)',brl(report.depositRefunded)],['Variação de cauções retidas em BRL no período',brl(report.depositMovement)],['Cauções retidas em BRL nas reservas do período',brl(report.depositHeld)],['Despesas em BRL (data de lançamento)',brl(report.expenses)],['Resultado operacional em BRL (recebido menos despesas)',brl(report.operatingNet)],['Movimento de caixa em BRL incluindo cauções',brl(report.cashNet)]];result={csv:rows.map(row=>row.map(v=>{const s=String(v),safe=/^[\t\r ]*[=+\-@]/.test(s)?`'${s}`:s;return `"${safe.replaceAll('"','""')}"`;}).join(';')).join('\r\n')+'\r\n'};}else result=report;
       }
       else if (route === "/rentals" && method === "POST") {
         const d = rentalInput.parse(input),

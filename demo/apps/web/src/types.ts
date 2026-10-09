@@ -95,7 +95,7 @@ export type Screen =
   | "quote"
   | "detail";
 
-export type PageInfo = { page: number; limit: number; total: number; pages: number };
+export type PageInfo = { page: number; limit: number; total: number; pages: number; hasMore: boolean; nextCursor: string|null };
 export type PageResponse<T> = PageInfo & { items: T[] };
-export type TodaySummary = { pickups: Rental[]; returns: Rental[]; overdue: Rental[]; maintenance: {id:string;name:string;category:string;remaining_quantity:number}[] };
+export type TodaySummary = { pickups: Rental[]; returns: Rental[]; overdue: Rental[]; maintenance: {id:string;name:string;category:string;remaining_quantity:number}[]; counts:{pickups:number;returns:number;overdue:number;maintenance:number} };
 export type OverviewSummary = { active_count: number; open_count: number; active_value: string; materials: number; upcoming: Rental[]; latest: Rental[] };

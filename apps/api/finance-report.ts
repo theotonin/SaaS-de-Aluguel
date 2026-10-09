@@ -1,6 +1,7 @@
 import type { SQL } from '../../packages/database/index.ts';
 import { DomainError } from '../../packages/domain/rental.ts';
-export { exactMoney } from '../../packages/domain/money.ts';
+import { exactMoney } from '../../packages/domain/money.ts';
+export { exactMoney };
 
 export type FinanceReport = {
   from: string; to: string; received: string; receivable: string;
@@ -57,7 +58,7 @@ export async function loadFinanceReport(sql: SQL, from: string, until: string, i
         sum(amount) FILTER(WHERE kind='deposit_refund') AS refunded
       FROM rental_finance WHERE rental_id=r.id
     ) f ON true
-    WHERE r.status IN ('confirmed','separated','delivered','returned')
+    WHERE r.status IN ('confirmed','separated','delivered','returned','canceled')
       AND r.starts_at AT TIME ZONE 'America/Sao_Paulo' >= $1::date
       AND r.starts_at AT TIME ZONE 'America/Sao_Paulo' < $2::date
   )
@@ -78,12 +79,13 @@ function csvCell(value: string): string {
 }
 
 export function reportCsv(report: FinanceReport, company = 'Empresa'): string {
+  const brl = (amount: string | null) => amount === null ? 'Restrito' : exactMoney(amount);
   const lines: [string,string][] = [
     ['Empresa', company], ['Período', `${report.from} a ${report.to}`],
-    ['Recebido líquido (data de lançamento)', report.received], ['A receber (data de início da reserva)', report.receivable],
-    ['Cauções recebidas (movimento no período)', report.depositReceived], ['Cauções devolvidas (movimento no período)', report.depositRefunded],
-    ['Variação de cauções retidas no período', report.depositMovement], ['Cauções retidas nas reservas do período', report.depositHeld], ['Despesas (data de lançamento)', report.expenses ?? 'Restrito'],
-    ['Resultado operacional recebido menos despesas', report.operatingNet ?? 'Restrito'], ['Movimento de caixa incluindo cauções', report.cashNet ?? 'Restrito'],
+    ['Recebido líquido em BRL (data de lançamento)', brl(report.received)], ['A receber em BRL (data de início da reserva)', brl(report.receivable)],
+    ['Cauções recebidas em BRL (movimento no período)', brl(report.depositReceived)], ['Cauções devolvidas em BRL (movimento no período)', brl(report.depositRefunded)],
+    ['Variação de cauções retidas em BRL no período', brl(report.depositMovement)], ['Cauções retidas em BRL nas reservas do período', brl(report.depositHeld)], ['Despesas em BRL (data de lançamento)', brl(report.expenses)],
+    ['Resultado operacional em BRL (recebido menos despesas)', brl(report.operatingNet)], ['Movimento de caixa em BRL incluindo cauções', brl(report.cashNet)],
   ];
   return lines.map(row => row.map(csvCell).join(';')).join('\r\n') + '\r\n';
 }

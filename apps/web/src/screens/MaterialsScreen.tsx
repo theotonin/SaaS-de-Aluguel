@@ -14,7 +14,6 @@ export function MaterialsScreen({
   editingItem,
   saved,
   items,
-  matches,
   query,
   setQuery,
   pageInfo,
@@ -27,13 +26,12 @@ export function MaterialsScreen({
   editingItem: Item | null;
   saved: (message: string) => void;
   items: Item[];
-  matches: (value: string) => boolean;
   query: string;
   setQuery: (value: string) => void;
   pageInfo: PageInfo;
   onPage: (page:number)=>void;
 }) {
-  const visible = items.filter((i) => matches(`${i.name} ${i.category}`));
+  const visible = items;
   return (
     <>
       <Heading
@@ -65,13 +63,13 @@ export function MaterialsScreen({
         <SearchInput
           value={query}
           set={setQuery}
-          placeholder="Buscar material ou categoria"
+          placeholder="Buscar material, categoria ou descrição"
         />
         <span className="muted" role="status">
           {visible.length} de {pageInfo.total} materiais
         </span>
         <span className="muted">
-          {items.length} de {user.organization?.item_limit} materiais do plano
+          {pageInfo.total} de {user.organization?.item_limit} materiais do plano
         </span>
       </div>
       <section className="panel">

@@ -1,12 +1,11 @@
 import { useId, useState, type ReactNode, type FormEvent } from "react";
 import { ArrowRight, PackageOpen, X } from "lucide-react";
+import { exactMoney } from "../../../packages/domain/money";
 export const money = (value: number | string) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
-    Number(value) / 100,
-  );
-export function Pagination({page,pages,total,onPage}:{page:number;pages:number;total:number;onPage:(page:number)=>void}){
-  if(pages<=1)return null;
-  return <nav className="pagination" aria-label="Paginação"><span className="muted">Página {page} de {pages} · {total} registros</span><div><button className="secondary" disabled={page<=1} onClick={()=>onPage(page-1)}>Anterior</button><button className="secondary" disabled={page>=pages} onClick={()=>onPage(page+1)}>Próxima</button></div></nav>;
+  exactMoney(String(value));
+export function Pagination({page,pages,total,hasMore=page<pages,onPage}:{page:number;pages:number;total:number;hasMore?:boolean;onPage:(page:number)=>void}){
+  if(pages<=1&&!hasMore)return null;
+  return <nav className="pagination" aria-label="Paginação"><span className="muted">Página {page} de {pages} · {total} registros</span><div><button className="secondary" disabled={page<=1} onClick={()=>onPage(page-1)}>Anterior</button><button className="secondary" disabled={!hasMore} onClick={()=>onPage(page+1)}>Próxima</button></div></nav>;
 }
 export const date = (value: string, time = true) =>
   new Intl.DateTimeFormat("pt-BR", {

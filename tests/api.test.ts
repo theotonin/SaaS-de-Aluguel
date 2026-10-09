@@ -106,16 +106,19 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
     assert.equal(customerPage.res.status,200);
     assert.deepEqual({total:customerPage.data.total,page:customerPage.data.page,limit:customerPage.data.limit,count:customerPage.data.items.length},{total:1,page:1,limit:1,count:1});
     assert.equal((await request('/customers?search=119999')).data.total,1,'numeric searches match normalized phone digits');
+    assert.equal((await request('/customers?search=%2811%29%2099999-9999')).data.total,1,'formatted phone searches match normalized digits');
     const item = await request("/items", "POST", {
       name: "Cadeira",
       category: "Mobiliário",
       quantity: 10,
       unitPrice: 500,
+      description: 'Madeira esculpida',
     });
     assert.equal(item.res.status, 201);
     const flexibleItems=await request('/items?page=1&limit=1&search=CAdeira%20Mobiliario');
     assert.equal(flexibleItems.data.total,1);
     assert.equal(flexibleItems.data.items[0].id,item.data.id);
+    assert.equal((await request('/items?search=esculpida')).data.total,1,'description-only search remains visible');
     const payload = {
       customerId: customer.data.id,
       start: "2026-12-20T12:00:00Z",
@@ -171,13 +174,24 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
     assert.equal(overview.data.active_value,'4000');
     assert.equal(overview.data.latest.length,1);
     const today=await request('/today');
-    assert.deepEqual(Object.keys(today.data).sort(),['maintenance','overdue','pickups','returns']);
+    assert.deepEqual(Object.keys(today.data).sort(),['counts','maintenance','overdue','pickups','returns']);
+    assert.ok(today.data.counts.pickups >= today.data.pickups.length);
+    const agenda=await request('/agenda?page=1&limit=1');
+    assert.equal(agenda.res.status,200);
+    assert.equal(agenda.data.items[0].id,rental.data.id);
+    assert.equal(agenda.data.total,1);
     const financeReport=await request('/finance/report?from=2026-12-01&to=2026-12-31');
     assert.equal(financeReport.data.receivable,'4000');
     assert.equal(financeReport.data.depositMovement,'0');
     const second = await request("/rentals", "POST", payload, {
       "idempotency-key": crypto.randomUUID(),
     });
+    const firstRentalPage=await request('/rentals?page=1&limit=1');
+    assert.equal(firstRentalPage.data.items.length,1);
+    assert.ok(firstRentalPage.data.nextCursor);
+    const nextRentalPage=await request(`/rentals?page=2&limit=1&cursor=${encodeURIComponent(firstRentalPage.data.nextCursor)}`);
+    assert.equal(nextRentalPage.data.items.length,1);
+    assert.notEqual(nextRentalPage.data.items[0].id,firstRentalPage.data.items[0].id,'keyset cursor avoids duplicate rentals');
     assert.equal(
       (
         await request(

@@ -12,7 +12,6 @@ export function CustomersScreen({
   form,
   saved,
   customers,
-  matches,
   query,
   setQuery,
   pageInfo,
@@ -23,15 +22,12 @@ export function CustomersScreen({
   form: boolean;
   saved: (message: string) => void;
   customers: Customer[];
-  matches: (value: string) => boolean;
   query: string;
   setQuery: (value: string) => void;
   pageInfo: PageInfo;
   onPage: (page:number)=>void;
 }) {
-  const visible = customers.filter((c) =>
-    matches(`${c.name} ${c.phone} ${c.email}`),
-  );
+  const visible = customers;
   return (
     <>
       <Heading

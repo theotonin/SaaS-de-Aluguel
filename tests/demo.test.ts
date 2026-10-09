@@ -86,12 +86,19 @@ test('demo provides bounded searchable pages and matching today and finance view
   assert.equal(page.total,1);
   assert.equal(page.items.length,1);
   assert.match(page.items[0].name,/Marina/);
+  const first=await demo.request('/rentals?page=1&limit=1');
+  if(first.nextCursor){const second=await demo.request(`/rentals?page=2&limit=1&cursor=${encodeURIComponent(first.nextCursor)}`);assert.notEqual(second.items[0]?.id,first.items[0]?.id);}
+  const agenda=await demo.request('/agenda?page=1&limit=5');
+  assert.equal(agenda.total,agenda.items.length);
   const today=await demo.request('/today');
-  assert.deepEqual(Object.keys(today).sort(),['maintenance','overdue','pickups','returns']);
+  assert.deepEqual(Object.keys(today).sort(),['counts','maintenance','overdue','pickups','returns']);
+  assert.equal(today.counts.pickups,today.pickups.length);
   const report=await demo.request('/finance/report?from=2027-01-01&to=2027-01-31');
   assert.equal(report.from,'2027-01-01');
   assert.equal(typeof report.received,'string');
   assert.equal(typeof report.depositMovement,'string');
+  const csv=await demo.request('/finance/report?from=2027-01-01&to=2027-01-31&format=csv');
+  assert.match(csv.csv,/ em BRL /);
   demo.selectRole('operator');
   await assert.rejects(demo.request('/finance/report?from=2027-01-01&to=2027-01-31'),/permissão/);
 });

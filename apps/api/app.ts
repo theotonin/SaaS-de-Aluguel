@@ -241,9 +241,11 @@ export function createApp(db: Database, options: Options) {
         }
         if (path === "/api/customers" && method === "GET") {
           const page = parsePage(url.searchParams), filter=searchPredicate(['name',"regexp_replace(phone,'[^0-9]','','g')",'email']);
+          if(page.cursor&&page.cursor.sort!=='name')throw new DomainError('Cursor incompatível com esta lista.',400);
           const total = Number((await sql.query(`SELECT count(*)::int AS total FROM customers WHERE ${filter}`, [page.search])).rows[0].total);
-          const rows = (await sql.query(`SELECT * FROM customers WHERE ${filter} ORDER BY lower(name),id LIMIT $2 OFFSET $3`, [page.search,page.limit,page.offset])).rows;
-          return pageResult(rows,total,page);
+          const cursor=page.cursor, cursorSql=cursor?'AND (lower(name)>$2 OR (lower(name)=$2 AND id>$3))':'';
+          const rows = (await sql.query(`SELECT *,lower(name) AS "__cursorKey" FROM customers WHERE ${filter} ${cursorSql} ORDER BY lower(name),id LIMIT $${cursor?4:2}${cursor?'':' OFFSET $3'}`, cursor?[page.search,cursor.key,cursor.id,page.limit+1]:[page.search,page.limit+1,page.offset])).rows;
+          return pageResult(rows,total,page,'name');
         }
         if (path === '/api/overview' && method === 'GET') {
           const summary = (await sql.query(`SELECT
@@ -271,9 +273,11 @@ export function createApp(db: Database, options: Options) {
         }
         if (path === "/api/items" && method === "GET") {
           const page = parsePage(url.searchParams), filter=searchPredicate(['i.name','i.category','i.description']);
+          if(page.cursor&&page.cursor.sort!=='name')throw new DomainError('Cursor incompatível com esta lista.',400);
           const total = Number((await sql.query(`SELECT count(*)::int AS total FROM items i WHERE ${filter}`, [page.search])).rows[0].total);
-          const rows = (await sql.query(`SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i WHERE ${filter} ORDER BY lower(i.name),i.id LIMIT $2 OFFSET $3`, [page.search,page.limit,page.offset])).rows;
-          return pageResult(rows,total,page);
+          const cursor=page.cursor, cursorSql=cursor?'AND (lower(i.name)>$2 OR (lower(i.name)=$2 AND i.id>$3))':'';
+          const rows = (await sql.query(`SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity,lower(i.name) AS "__cursorKey" FROM items i WHERE ${filter} ${cursorSql} ORDER BY lower(i.name),i.id LIMIT $${cursor?4:2}${cursor?'':' OFFSET $3'}`, cursor?[page.search,cursor.key,cursor.id,page.limit+1]:[page.search,page.limit+1,page.offset])).rows;
+          return pageResult(rows,total,page,'name');
         }
         if (path === "/api/items" && method === "POST") {
           can("admin");
@@ -345,11 +349,15 @@ export function createApp(db: Database, options: Options) {
               .datetime({ offset: true })
               .parse(url.searchParams.get("end"));
           const page = parsePage(url.searchParams), filter=searchPredicate(['i.name','i.category','i.description']);
+          if(page.cursor&&page.cursor.sort!=='name')throw new DomainError('Cursor incompatível com esta lista.',400);
           const total = Number((await sql.query(`SELECT count(*)::int AS total FROM items i WHERE ${filter}`, [page.search])).rows[0].total);
-          const rows = (await sql.query(`SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i WHERE ${filter} ORDER BY lower(i.name),i.id LIMIT $2 OFFSET $3`, [page.search,page.limit,page.offset])).rows;
+          const cursor=page.cursor, cursorSql=cursor?'AND (lower(i.name)>$2 OR (lower(i.name)=$2 AND i.id>$3))':'';
+          const rows = (await sql.query(`SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity,lower(i.name) AS "__cursorKey" FROM items i WHERE ${filter} ${cursorSql} ORDER BY lower(i.name),i.id LIMIT $${cursor?4:2}${cursor?'':' OFFSET $3'}`, cursor?[page.search,cursor.key,cursor.id,page.limit+1]:[page.search,page.limit+1,page.offset])).rows;
           const items = await Promise.all(
             rows.map(async (item) => ({
               ...item,
+              id: item.id,
+              __cursorKey: item.__cursorKey,
               available: availableQuantity(
                 item.quantity - item.maintenance_quantity,
                 start,
@@ -359,21 +367,37 @@ export function createApp(db: Database, options: Options) {
               ),
             })),
           );
-          return pageResult(items,total,page);
+          return pageResult(items,total,page,'name');
         }
         if (path === "/api/rentals" && method === "GET") {
           const page = parsePage(url.searchParams), rawStatus = url.searchParams.get('status'), search=searchPredicate(['c.name','r.number::text']);
+          if(page.cursor&&page.cursor.sort!=='rental')throw new DomainError('Cursor incompatível com esta lista.',400);
           const status = rawStatus && rawStatus !== 'all' ? z.enum(['draft','sent','confirmed','separated','delivered','returned','closed','canceled']).parse(rawStatus) : null;
           const total = Number((await sql.query(`SELECT count(*)::int AS total FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE ${search} AND ($2::text IS NULL OR r.status=$2)`, [page.search,status])).rows[0].total);
-          const rows = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE ${search} AND ($2::text IS NULL OR r.status=$2) ORDER BY r.starts_at DESC,r.id LIMIT $3 OFFSET $4`, [page.search,status,page.limit,page.offset])).rows;
-          return pageResult(rows,total,page);
+          const cursor=page.cursor, cursorSql=cursor?'AND (r.starts_at<$3::timestamptz OR (r.starts_at=$3::timestamptz AND r.id>$4))':'';
+          const rows = (await sql.query(`SELECT r.*,c.name AS customer_name,r.starts_at AS "__cursorKey" FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE ${search} AND ($2::text IS NULL OR r.status=$2) ${cursorSql} ORDER BY r.starts_at DESC,r.id LIMIT $${cursor?5:3}${cursor?'':' OFFSET $4'}`, cursor?[page.search,status,cursor.key,cursor.id,page.limit+1]:[page.search,status,page.limit+1,page.offset])).rows;
+          return pageResult(rows,total,page,'rental');
         }
         if (path === '/api/today' && method === 'GET') {
           const pickups = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE (r.starts_at AT TIME ZONE 'America/Sao_Paulo')::date=(now() AT TIME ZONE 'America/Sao_Paulo')::date AND r.status IN ('confirmed','separated') ORDER BY r.starts_at,r.id LIMIT 100`)).rows;
           const returnsToday = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE (r.ends_at AT TIME ZONE 'America/Sao_Paulo')::date=(now() AT TIME ZONE 'America/Sao_Paulo')::date AND r.status='delivered' ORDER BY r.ends_at,r.id LIMIT 100`)).rows;
           const overdue = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE r.status='delivered' AND r.ends_at<now() ORDER BY r.ends_at,r.id LIMIT 100`)).rows;
           const maintenance = (await sql.query(`SELECT i.id,i.name,i.category,sum(m.remaining_quantity)::int AS remaining_quantity FROM item_maintenance m JOIN items i ON i.id=m.item_id AND i.organization_id=m.organization_id WHERE m.remaining_quantity>0 GROUP BY i.id,i.name,i.category ORDER BY lower(i.name),i.id LIMIT 100`)).rows;
-          return { pickups, returns: returnsToday, overdue, maintenance };
+          const counts = (await sql.query(`SELECT
+            (SELECT count(*)::int FROM rentals WHERE (starts_at AT TIME ZONE 'America/Sao_Paulo')::date=(now() AT TIME ZONE 'America/Sao_Paulo')::date AND status IN ('confirmed','separated')) AS pickups,
+            (SELECT count(*)::int FROM rentals WHERE (ends_at AT TIME ZONE 'America/Sao_Paulo')::date=(now() AT TIME ZONE 'America/Sao_Paulo')::date AND status='delivered') AS returns,
+            (SELECT count(*)::int FROM rentals WHERE status='delivered' AND ends_at<now()) AS overdue,
+            (SELECT count(DISTINCT i.id)::int FROM item_maintenance m JOIN items i ON i.id=m.item_id AND i.organization_id=m.organization_id WHERE m.remaining_quantity>0) AS maintenance`)).rows[0];
+          return { pickups, returns: returnsToday, overdue, maintenance, counts };
+        }
+        if (path === '/api/agenda' && method === 'GET') {
+          const page=parsePage(url.searchParams);
+          if(page.cursor&&page.cursor.sort!=='rental')throw new DomainError('Cursor incompatível com esta lista.',400);
+          const active="status IN ('confirmed','separated','delivered')";
+          const total=Number((await sql.query(`SELECT count(*)::int AS total FROM rentals WHERE ${active}`)).rows[0].total);
+          const cursor=page.cursor,cursorSql=cursor?'AND (starts_at<$1::timestamptz OR (starts_at=$1::timestamptz AND id>$2))':'';
+          const rows=(await sql.query(`SELECT r.*,c.name AS customer_name,r.starts_at AS "__cursorKey" FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE r.${active} ${cursorSql} ORDER BY r.starts_at DESC,r.id LIMIT $${cursor?3:1}${cursor?'':' OFFSET $2'}`,cursor?[cursor.key,cursor.id,page.limit+1]:[page.limit+1,page.offset])).rows;
+          return pageResult(rows,total,page,'rental');
         }
         if (path === "/api/rentals" && method === "POST") {
           can("admin", "attendant");

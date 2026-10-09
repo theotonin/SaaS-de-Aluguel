@@ -15,7 +15,6 @@ export function ReservationsScreen({
   statusFilter,
   setStatusFilter,
   rentals,
-  matches,
   openRental,
   pageInfo,
   onPage,
@@ -27,16 +26,11 @@ export function ReservationsScreen({
   statusFilter: string;
   setStatusFilter: (value: string) => void;
   rentals: Rental[];
-  matches: (value: string) => boolean;
   openRental: (rental: Rental) => void;
   pageInfo: PageInfo;
   onPage: (page:number)=>void;
 }) {
-  const visible = rentals.filter(
-    (r) =>
-      matches(`${r.customer_name} ${r.number}`) &&
-      (statusFilter === "all" || r.status === statusFilter),
-  );
+  const visible = rentals;
   return (
     <>
       <Heading

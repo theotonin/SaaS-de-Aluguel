@@ -1,5 +1,4 @@
 import {mutationRecovery,type PendingMutation} from './mutation-recovery';
-import { matchesSearch } from "./search";
 import type { Screen } from "./types";
 import { accessibleAccent } from "./branding";
 import { OverviewScreen } from "./screens/OverviewScreen";
@@ -78,9 +77,13 @@ export function App() {
   const [customers, setCustomers] = useState<Customer[]>([]),
     [items, setItems] = useState<Item[]>([]),
     [rentals, setRentals] = useState<Rental[]>([]);
-  const [today, setToday] = useState<TodaySummary>({pickups:[],returns:[],overdue:[],maintenance:[]});
+  const [agendaRentals,setAgendaRentals]=useState<Rental[]>([]);
+  const [agendaPage,setAgendaPage]=useState<PageInfo>({page:1,limit:50,total:0,pages:1,hasMore:false,nextCursor:null});
+  const [agendaCursors,setAgendaCursors]=useState<Record<number,string>>({1:''});
+  const [today, setToday] = useState<TodaySummary>({pickups:[],returns:[],overdue:[],maintenance:[],counts:{pickups:0,returns:0,overdue:0,maintenance:0}});
   const [overview, setOverview] = useState<OverviewSummary>({active_count:0,open_count:0,active_value:'0',materials:0,upcoming:[],latest:[]});
-  const [listPages,setListPages]=useState<Record<'customers'|'items'|'rentals',PageInfo>>({customers:{page:1,limit:50,total:0,pages:1},items:{page:1,limit:50,total:0,pages:1},rentals:{page:1,limit:50,total:0,pages:1}});
+  const [listPages,setListPages]=useState<Record<'customers'|'items'|'rentals',PageInfo>>({customers:{page:1,limit:50,total:0,pages:1,hasMore:false,nextCursor:null},items:{page:1,limit:50,total:0,pages:1,hasMore:false,nextCursor:null},rentals:{page:1,limit:50,total:0,pages:1,hasMore:false,nextCursor:null}});
+  const [listCursors,setListCursors]=useState<Record<'customers'|'items'|'rentals',Record<number,string>>>({customers:{1:''},items:{1:''},rentals:{1:''}});
   const [companies, setCompanies] = useState<Company[]>([]),
     [members, setMembers] = useState<Member[]>([]),
     [audit, setAudit] = useState<Audit[]>([]);
@@ -147,6 +150,7 @@ export function App() {
               setOverview(summary);
               setToday(daily);
               setListPages({customers:c,items:i,rentals:r});
+              setListCursors({customers:{1:''},items:{1:''},rentals:{1:''}});
               setMembers(m);
             }
           });
@@ -165,27 +169,41 @@ export function App() {
     const resource=screen==='customers'?'customers':screen==='items'?'items':screen==='rentals'?'rentals':null;
     if(!user||!resource||user.role==='superadmin')return;
     let current=true;
+    const pageNumber=listPages[resource].page,cursor=listCursors[resource][pageNumber]??'';
     const timer=window.setTimeout(()=>{
-      const params=new URLSearchParams({page:String(listPages[resource].page),limit:'50',search:query});
+      const params=new URLSearchParams({page:String(pageNumber),limit:'50',search:query});
+      if(cursor)params.set('cursor',cursor);
       if(resource==='rentals')params.set('status',statusFilter);
       request<PageResponse<Customer|Item|Rental>>(`/${resource}?${params}`).then(response=>{
         if(!current)return;
         setListPages(value=>({...value,[resource]:response}));
+        if(response.nextCursor)setListCursors(value=>({...value,[resource]:{...value[resource],[response.page+1]:response.nextCursor!}}));
         if(resource==='customers')setCustomers(response.items as Customer[]);
         else if(resource==='items')setItems(response.items as Item[]);
         else setRentals(response.items as Rental[]);
       }).catch(e=>{if(current)setError((e as Error).message);});
     },250);
     return()=>{current=false;window.clearTimeout(timer);};
-  },[user,screen,query,statusFilter,listPages.customers.page,listPages.items.page,listPages.rentals.page]);
+  },[user,screen,query,statusFilter,listPages.customers.page,listPages.items.page,listPages.rentals.page,listCursors.customers[listPages.customers.page],listCursors.items[listPages.items.page],listCursors.rentals[listPages.rentals.page]]);
+  useEffect(()=>{
+    if(!user||screen!=='agenda'||user.role==='superadmin')return;
+    let current=true;const pageNumber=agendaPage.page,cursor=agendaCursors[pageNumber]??'';
+    request<PageResponse<Rental>>(`/agenda?page=${pageNumber}&limit=50${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`).then(response=>{
+      if(!current)return;setAgendaRentals(response.items);setAgendaPage(response);
+      if(response.nextCursor)setAgendaCursors(value=>({...value,[response.page+1]:response.nextCursor!}));
+    }).catch(e=>{if(current)setError((e as Error).message);});
+    return()=>{current=false;};
+  },[user,screen,revision,agendaPage.page,agendaCursors[agendaPage.page]]);
+  function setAgendaPageNumber(page:number){setAgendaPage(value=>({...value,page}));}
   function setListPage(resource:'customers'|'items'|'rentals',page:number){setListPages(value=>({...value,[resource]:{...value[resource],page}}));}
-  function setListSearch(value:string){setQuery(value);setListPages(pages=>({customers:{...pages.customers,page:1},items:{...pages.items,page:1},rentals:{...pages.rentals,page:1}}));}
+  function resetListPages(){setListPages(pages=>({customers:{...pages.customers,page:1},items:{...pages.items,page:1},rentals:{...pages.rentals,page:1}}));setListCursors({customers:{1:''},items:{1:''},rentals:{1:''}});}
+  function setListSearch(value:string){setQuery(value);resetListPages();}
   function go(next: Screen) {
     if(operationLocked)return;
     setScreen(next);
     setForm(false);
     setQuery("");
-    setListPages(pages=>({customers:{...pages.customers,page:1},items:{...pages.items,page:1},rentals:{...pages.rentals,page:1}}));
+    resetListPages();
     setNotice("");
     setEditingItem(null);
     setEditingCompany(null);
@@ -207,6 +225,7 @@ export function App() {
     setForm(false);
     setEditingItem(null);
     setEditingCompany(null);
+    resetListPages();
     setRevision((v) => v + 1);
     setNotice(message);
   }
@@ -232,15 +251,7 @@ export function App() {
   const navigation = admin
     ? adminNav
     : nav.filter((n) => (n.id !== "team" || user.role === "admin") && (n.id !== 'finance' || ['admin','attendant'].includes(user.role)));
-  const matches = (text: string) => matchesSearch(text, query);
-  function setRentalStatusFilter(value:string){setStatusFilter(value);setListPages(pages=>({...pages,rentals:{...pages.rentals,page:1}}));}
-  const activeRentals = rentals.filter(
-    (r) =>
-      !["draft", "sent", "canceled", "closed", "returned"].includes(r.status),
-  );
-  const upcoming = [...activeRentals].sort(
-    (a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at),
-  );
+  function setRentalStatusFilter(value:string){setStatusFilter(value);setListPages(pages=>({...pages,rentals:{...pages.rentals,page:1}}));setListCursors(value=>({...value,rentals:{1:''}}));}
   return (
     <div
       className="app-shell"
@@ -342,8 +353,8 @@ export function App() {
             >
               <n.icon size={19} />
               {n.name}
-              {n.id === "rentals" && activeRentals.length > 0 && (
-                <span className="nav-count">{activeRentals.length}</span>
+              {n.id === "rentals" && overview.active_count > 0 && (
+                <span className="nav-count">{overview.active_count}</span>
               )}
             </button>
           ))}
@@ -415,7 +426,9 @@ export function App() {
               {effectiveScreen === 'finance' && <FinanceReportScreen/>}
               {effectiveScreen === "agenda" && (
                 <AgendaScreen
-                  activeRentals={activeRentals}
+                  activeRentals={agendaRentals}
+                  pageInfo={agendaPage}
+                  onPage={setAgendaPageNumber}
                   openRental={openRental}
                 />
               )}
@@ -428,7 +441,6 @@ export function App() {
                   statusFilter={statusFilter}
                   setStatusFilter={setRentalStatusFilter}
                   rentals={rentals}
-                  matches={matches}
                   openRental={openRental}
                   pageInfo={listPages.rentals}
                   onPage={page=>setListPage('rentals',page)}
@@ -503,7 +515,6 @@ export function App() {
                   form={form}
                   saved={saved}
                   customers={customers}
-                  matches={matches}
                   query={query}
                   setQuery={setListSearch}
                   pageInfo={listPages.customers}
@@ -519,7 +530,6 @@ export function App() {
                   editingItem={editingItem}
                   saved={saved}
                   items={items}
-                  matches={matches}
                   query={query}
                   setQuery={setListSearch}
                   pageInfo={listPages.items}
