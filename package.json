@@ -6,14 +6,14 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "dev:api": "tsx watch apps/api/server.ts",
+    "dev:api": "node --env-file-if-exists=.env --import tsx --watch apps/api/server.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "test:browser": "playwright test",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "admin:create": "tsx scripts/create-admin.ts",
-    "start": "tsx apps/api/server.ts"
+    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
+    "admin:create": "node --env-file-if-exists=.env --import tsx scripts/create-admin.ts",
+    "start": "node --env-file-if-exists=.env --import tsx apps/api/server.ts"
   },
   "dependencies": {
     "pg": "^8.16.3",
