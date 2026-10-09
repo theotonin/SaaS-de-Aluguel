@@ -224,9 +224,9 @@ strong {
   align-items: center;
   gap: 10px;
   padding: 0 12px;
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.04em;
   line-height: 1;
 }
 .brand-mark {
@@ -237,10 +237,10 @@ strong {
 }
 
 .brand-product {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 400;
-  letter-spacing: -0.02em;
-  margin-left: 6px;
+  letter-spacing: normal;
+  white-space: nowrap;
   color: var(--muted);
 }
 .workspace {
@@ -1627,8 +1627,7 @@ textarea {
 /* Estrutura comum da família Tonin, seguindo a referência do Estoque. */
 .app-shell{display:grid;grid-template-columns:200px minmax(0,1fr);column-gap:32px;padding-inline:32px;align-items:start;}
 .app-header{grid-column:1/-1;display:flex;align-items:center;gap:24px;padding:22px 0;border-bottom:1px solid var(--line);}
-.app-header .brand{padding:0;letter-spacing:-.03em;white-space:nowrap;}
-.brand-divider{color:var(--muted);font-weight:400;margin-inline:4px;}
+.app-header .brand{padding:0;white-space:nowrap;}
 .header-company{margin-left:auto;color:var(--muted);font-size:13px;}
 .header-profile{font-size:12px;color:var(--muted);}
 .sidebar{grid-column:1;position:sticky;inset:auto;top:24px;width:200px;padding:0 24px 0 0;margin-top:28px;background:transparent;border-right:1px solid var(--line);z-index:1;}
@@ -1648,5 +1647,5 @@ main{padding:12px 0 24px;max-width:none;}
 .demo-actions{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-top:12px;}
 .demo-actions label{min-width:190px;font-size:13px;display:grid;gap:6px;}
 @media(max-width:999px){.app-shell{display:block;padding-inline:24px;}.app-header{flex-wrap:wrap;gap:12px;}.header-profile{flex-basis:100%;}.sidebar{position:static;width:auto;margin-top:24px;padding:0;border:0;}.sidebar .workspace,.sidebar-footer{display:none;}.sidebar nav{display:flex;flex-direction:row;overflow-x:auto;gap:8px;padding-bottom:12px;}.nav-item{width:auto;white-space:nowrap;flex-shrink:0;}.main-column{width:100%;margin:0;}.topbar{padding:12px 0;}main{padding:12px 0 24px;}}
-@media(max-width:600px){.app-shell{padding-inline:20px;}.app-header .brand{font-size:24px;}.header-company{margin-left:0;}.demo-actions{gap:12px;}.demo-actions label{flex:1 1 100%;}.demo-tools details p{overflow-wrap:anywhere;}}
+@media(max-width:600px){.app-shell{padding-inline:20px;}.header-company{margin-left:0;}.demo-actions{gap:12px;}.demo-actions label{flex:1 1 100%;}.demo-tools details p{overflow-wrap:anywhere;}}
 @media print{.app-shell{display:block;padding:0;}.app-header,.demo-tools{display:none!important;}.sidebar{display:none!important;}}
