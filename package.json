@@ -17,14 +17,18 @@
     "test:browser": "playwright test",
     "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
     "admin:create": "node --env-file-if-exists=.env --import tsx scripts/create-admin.ts",
-    "start": "node --env-file-if-exists=.env --import tsx apps/api/server.ts"
+    "start": "node --env-file-if-exists=.env --import tsx apps/api/server.ts",
+    "db:check": "node --env-file-if-exists=.env --import tsx scripts/check-database.ts",
+    "build:vercel": "node scripts/build-vercel.mjs",
+    "test:postgres": "node --env-file-if-exists=.env --import tsx --test tests/integration/*.test.ts"
   },
   "dependencies": {
     "pg": "^8.16.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "lucide-react": "^0.468.0",
-    "zod": "^4.1.12"
+    "zod": "^4.1.12",
+    "tsx": "^4.20.6"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.3.14",
@@ -34,7 +38,6 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
-    "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^7.1.12"
   }

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readJson as readBody } from "./read-json.ts";
 import { clientAddress } from "./client-address.ts";
 import { z } from "zod";
 import type { Database } from "../../packages/database/index.ts";
@@ -32,24 +33,8 @@ import {
   occupations,
 } from "./rentals.ts";
 
-type Options = { origin: string; production: boolean; trustedProxy?: string };
-async function readBody(req: IncomingMessage): Promise<unknown> {
-  if (!req.headers["content-type"]?.startsWith("application/json"))
-    throw new DomainError("Envie o formulário em JSON.", 415);
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > 65536)
-      throw new DomainError("O formulário excede o tamanho permitido.", 413);
-    chunks.push(Buffer.from(chunk));
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString() || "{}");
-  } catch {
-    throw new DomainError("Não foi possível ler o formulário.");
-  }
-}
+type Options = { origin: string; production: boolean; trustedProxy?: string; clientIp?: (req: IncomingMessage) => string };
+
 function send(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(data));
@@ -80,7 +65,7 @@ export function createApp(db: Database, options: Options) {
           403,
         );
       if (path === "/api/auth/login" && method === "POST") {
-        const ip = clientAddress(
+        const ip = options.clientIp?.(req) ?? clientAddress(
             req.socket.remoteAddress,
             req.headers["x-forwarded-for"],
             options.trustedProxy,

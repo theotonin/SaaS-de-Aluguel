@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 import { createApp } from "../apps/api/app.ts";
 import { hashPassword } from "../apps/api/auth.ts";
 import type { Database, SQL } from "../packages/database/index.ts";
+import { databaseFromPool } from '../packages/database/index.ts';
 
 test("HTTP workflow protects authentication, CSRF, tenant access and reservation capacity", async () => {
   const pg = new PGlite();
@@ -20,12 +21,9 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
     `INSERT INTO users(name,email,password_hash,role) VALUES('Tonin','root@example.test',$1,'superadmin')`,
     [hash],
   );
-  await pg.exec("SET ROLE loca_runtime");
-  const db: Database = {
-    query: (text, params) => pg.query(text, params),
-    transaction: (work) => pg.transaction((tx) => work(tx as SQL)),
-    close: () => pg.close(),
-  };
+  // The Prisma profile starts with an owner connection and restricts every transaction.
+  const query = (text: string, params?: any[]) => pg.query<any>(text, params);
+  const db = databaseFromPool({ query, connect: async () => ({ query, release() {} }), end: () => pg.close() }, { role: 'loca_runtime' });
   const server = createServer(
     createApp(db, { origin: "http://localhost:5173", production: false }),
   );

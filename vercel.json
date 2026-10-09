@@ -1,7 +1,8 @@
 {
-  "buildCommand": "npm run build:demo",
+  "buildCommand": "npm run build:vercel",
   "outputDirectory": "dist/web",
   "framework": "vite",
+  "functions": { "api/[...path].ts": { "maxDuration": 30 } },
   "headers": [
     {
       "source": "/(.*)",
