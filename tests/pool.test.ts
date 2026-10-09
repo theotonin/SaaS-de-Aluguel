@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import type { SQL } from '../packages/database/index.ts';
+import { migrate } from '../packages/database/migrate.ts';
 import { PGlite } from '@electric-sql/pglite';
 import { databaseFromPool, tenant, verifyRuntime } from '../packages/database/index.ts';
 
 test('Prisma role is local to each transaction, RLS fails closed, rollback and pool reuse do not leak tenant context', async () => {
   const pg = new PGlite();
-  await pg.exec(await readFile(new URL('../packages/database/schema.sql', import.meta.url), 'utf8'));
+  const ownerQuery:SQL['query']=(text,values)=>values?pg.query<any>(text,values):pg.exec(text).then(rs=>(rs.at(-1)??{rows:[]}) as any);
+  await migrate({query:ownerQuery,transaction:async work=>{await pg.exec('BEGIN');try{const result=await work({query:ownerQuery});await pg.exec('COMMIT');return result;}catch(error){await pg.exec('ROLLBACK');throw error;}},close:()=>pg.close()});
   await pg.exec(`INSERT INTO organizations(id,name,slug) VALUES
     ('00000000-0000-4000-8000-000000000001','A','a'),('00000000-0000-4000-8000-000000000002','B','b');
     INSERT INTO customers(organization_id,name,phone) VALUES

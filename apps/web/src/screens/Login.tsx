@@ -6,7 +6,7 @@ import { TextField } from "../components";
 import type { User } from "../types";
 import { Brand } from "./Brand";
 
-export function Login({ onLogin }: { onLogin: (user: User) => void }) {
+export function Login({ onLogin }: { onLogin: (user: User) => void | Promise<void> }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -20,7 +20,7 @@ export function Login({ onLogin }: { onLogin: (user: User) => void }) {
         password: f.get("password"),
       });
       setCsrf(u.csrf);
-      onLogin(u);
+      await onLogin(u);
     } catch (e) {
       setError((e as Error).message);
     } finally {

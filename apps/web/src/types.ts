@@ -33,13 +33,18 @@ export type Item = {
   quantity: number;
   unit_price: number;
   available?: number;
+  maintenance_quantity?: number;
 };
 export type Line = {
   item_id: string;
   name: string;
   quantity: number;
   unit_price: number;
+  received_quantity?: number;
+  damaged_quantity?: number;
 };
+export type ReturnEvent = { id: string; created_at: string; lines: {item_id: string; name: string; received_quantity: number; damaged_quantity: number; note: string}[] };
+export type Maintenance = { id: string; item_id: string; name: string; quantity: number; remaining_quantity: number; note: string; created_at: string; releases?: {id:string;quantity:number;note:string;created_at:string}[] };
 export type Rental = {
   id: string;
   number: number | string;
@@ -58,6 +63,9 @@ export type Rental = {
   cancellation_reason: string;
   fulfillment: "pickup" | "delivery";
   lines?: Line[];
+  returns?: ReturnEvent[];
+  maintenance?: Maintenance[];
+  reopenings?: {id:string;reason:string;created_at:string}[];
 };
 export type Member = {
   id: string;

@@ -4,6 +4,7 @@ export type CompanyData = {
   items: Item[];
   rentals: Rental[];
   members: Member[];
+  finance?: Record<string, import("../../../../packages/contracts/finance").FinanceEntry[]>;
 };
 export type DemoState = {
   version: 1;

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { readFile } from "node:fs/promises";
+import { migrate } from "../packages/database/migrate.ts";
 import { createServer } from "node:http";
 import { createApp } from "../apps/api/app.ts";
 import { hashPassword } from "../apps/api/auth.ts";
@@ -10,12 +10,8 @@ import { databaseFromPool } from '../packages/database/index.ts';
 
 test("HTTP workflow protects authentication, CSRF, tenant access and reservation capacity", async () => {
   const pg = new PGlite();
-  await pg.exec(
-    await readFile(
-      new URL("../packages/database/schema.sql", import.meta.url),
-      "utf8",
-    ),
-  );
+  const owner:Database={query:(q,v)=>v?pg.query(q,v):pg.exec(q).then(r=>r.at(-1) as any),transaction:work=>pg.transaction(tx=>work({query:(q,v)=>v?tx.query(q,v):tx.exec(q).then(r=>r.at(-1) as any)})),close:()=>pg.close()};
+  await migrate(owner);
   const hash = await hashPassword("UmaSenhaSegura123!");
   await pg.query(
     `INSERT INTO users(name,email,password_hash,role) VALUES('Tonin','root@example.test',$1,'superadmin')`,

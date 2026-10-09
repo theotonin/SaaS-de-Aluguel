@@ -1,3 +1,7 @@
+import {returnInput,maintenanceInput,closeInput,reopenInput} from '../../../../packages/contracts/returns';
+import {financeInput} from '../../../../packages/contracts/finance';
+import {financeSummary,assertFinanceEntry} from '../../../../packages/domain/payments';
+import {applyReturn} from '../../../../packages/domain/returns';
 import {
   companyInput,
   brandingInput,
@@ -11,6 +15,7 @@ import {
   rentalDays,
   calculateTotal,
   availableQuantity,
+  capacityWindowStart,
   assertTransition,
   assertDeliveryWindow,
   DomainError,
@@ -107,13 +112,16 @@ export function createDemo(storage: Storage) {
         method !== "GET" &&
         role === "operator" &&
         !(
-          route.endsWith("/status") &&
-          ["separated", "delivered"].includes(input?.status)
+          (route.endsWith("/status") &&
+          ["separated", "delivered"].includes(input?.status)) || route.endsWith("/returns") || /\/maintenance\/[^/]+\/release$/.test(route)
         )
       )
         throw new DomainError("Este perfil não pode executar esta ação.", 403);
+      const maintenanceQuantity=(id:string)=>data.rentals.flatMap(r=>r.maintenance??[]).filter(j=>j.item_id===id).reduce((sum,j)=>sum+j.remaining_quantity,0);
       const detail = (r: Rental) => ({
         ...r,
+        lines:r.lines?.map(line=>({...line,received_quantity:(r.returns??[]).flatMap(event=>event.lines).filter(x=>x.item_id===line.item_id).reduce((sum,x)=>sum+x.received_quantity,0),damaged_quantity:(r.returns??[]).flatMap(event=>event.lines).filter(x=>x.item_id===line.item_id).reduce((sum,x)=>sum+x.damaged_quantity,0)})),
+        returns:r.returns??[],maintenance:r.maintenance??[],reopenings:r.reopenings??[],
         customer_name:
           data.customers.find((c) => c.id === r.customer_id)?.name ??
           r.customer_name,
@@ -133,6 +141,7 @@ export function createDemo(storage: Storage) {
                 end: r.ends_at,
                 status: r.status,
                 quantity: l.quantity,
+                returns:(r.returns??[]).flatMap(event=>event.lines.filter(x=>x.item_id===id).map(x=>({at:event.created_at,quantity:x.received_quantity}))),
               })),
           );
       const operationId = companyId + ":" + role + ":" + operationKey;
@@ -214,7 +223,7 @@ export function createDemo(storage: Storage) {
       else if (route === "/customers" && method === "POST") {
         result = { id: crypto.randomUUID(), ...customerInput.parse(input) };
         data.customers.push(result);
-      } else if (route === "/items" && method === "GET") result = data.items;
+      } else if (route === "/items" && method === "GET") result = data.items.map(i=>({...i,maintenance_quantity:maintenanceQuantity(i.id)}));
       else if (
         (route === "/items" && method === "POST") ||
         (route.startsWith("/items/") && method === "PATCH")
@@ -223,6 +232,7 @@ export function createDemo(storage: Storage) {
           throw new DomainError("Ação exclusiva do administrador.", 403);
         const d = itemInput.parse(input),
           found = data.items.find((i) => i.id === route.split("/").at(-1));
+        if(found&&d.quantity<maintenanceQuantity(found.id))throw new DomainError("O acervo total não pode ficar abaixo da quantidade em manutenção.",409);
         if (method === "PATCH" && !found)
           throw new DomainError("Material não encontrado.", 404);
         if (
@@ -253,8 +263,9 @@ export function createDemo(storage: Storage) {
       } else if (route === "/availability") {
         result = data.items.map((i) => ({
           ...i,
+          maintenance_quantity:maintenanceQuantity(i.id),
           available: availableQuantity(
-            i.quantity,
+            i.quantity-maintenanceQuantity(i.id),
             url.searchParams.get("start")!,
             url.searchParams.get("end")!,
             occupation(i.id),
@@ -311,8 +322,46 @@ export function createDemo(storage: Storage) {
         const id = route.split("/")[2],
           rental = data.rentals.find((r) => r.id === id);
         if (!rental) throw new DomainError("Reserva não encontrada.", 404);
-        if (method === "GET") result = detail(rental);
-        else {
+        const action=route.split('/')[3];
+        if(action==='finance'){
+          if(!['admin','attendant'].includes(role))throw new DomainError('Acesso comercial necessário.',403);
+          const ledger=(data.finance??={})[id]??=[];
+          if(method==='POST'){
+            const entry=financeInput.parse(input);
+            if(entry.kind==='expense'&&role!=='admin')throw new DomainError('Despesa exige administrador.',403);
+            assertFinanceEntry(rental.total,rental.status,ledger,entry);
+            ledger.push({...entry,id:crypto.randomUUID(),created_at:new Date().toISOString()});
+          }else if(method!=='GET')throw new DomainError('Operação indisponível.',404);
+          result={entries:ledger,summary:financeSummary(rental.total,rental.status,ledger)};
+        } else if(action==='returns'&&method==='POST'){
+          if(!['admin','operator'].includes(role))throw new DomainError('A conferência exige administrador ou operador.',403);
+          if(rental.status!=='delivered')throw new DomainError('Somente uma reserva entregue com materiais pendentes pode receber devolução.',409);
+          const d=returnInput.parse(input),current=detail(rental);
+          for(const part of d.lines){const line=current.lines?.find(l=>l.item_id===part.itemId);if(!line)throw new DomainError('Material não encontrado nesta reserva.',404);applyReturn({quantity:line.quantity,receivedQuantity:line.received_quantity,damagedQuantity:line.damaged_quantity},part.receivedQuantity,part.damagedQuantity);}
+          const created_at=new Date().toISOString();
+          (rental.returns??=[]).push({id:crypto.randomUUID(),created_at,lines:d.lines.map(part=>({item_id:part.itemId,name:rental.lines!.find(l=>l.item_id===part.itemId)!.name,received_quantity:part.receivedQuantity,damaged_quantity:part.damagedQuantity,note:part.note}))});
+          for(const part of d.lines)if(part.damagedQuantity)(rental.maintenance??=[]).push({id:crypto.randomUUID(),item_id:part.itemId,name:rental.lines!.find(l=>l.item_id===part.itemId)!.name,quantity:part.damagedQuantity,remaining_quantity:part.damagedQuantity,note:part.note,created_at});
+          if(detail(rental).lines!.every(l=>l.received_quantity===l.quantity))rental.status='returned';
+          result=detail(rental);
+        } else if(action==='maintenance'&&method==='POST'&&route.endsWith('/release')){
+          if(!['admin','operator'].includes(role))throw new DomainError('A manutenção exige administrador ou operador.',403);
+          const job=rental.maintenance?.find(j=>j.id===route.split('/')[4]);if(!job)throw new DomainError('Registro de manutenção não encontrado.',404);
+          const d=maintenanceInput.parse(input);if(d.quantity>job.remaining_quantity)throw new DomainError('A liberação não pode exceder a quantidade em manutenção.',409);
+          job.remaining_quantity-=d.quantity;(job.releases??=[]).push({id:crypto.randomUUID(),quantity:d.quantity,note:d.note,created_at:new Date().toISOString()});result=detail(rental);
+        } else if(action==='close'&&method==='POST'){
+          closeInput.parse(input);
+          if(!['admin','attendant'].includes(role))throw new DomainError('Encerramento exige acesso comercial.',403);
+          if(rental.status!=='returned')throw new DomainError('Conclua a devolução de todos os materiais antes de encerrar.',409);
+          const summary=financeSummary(rental.total,rental.status,data.finance?.[id]??[]);
+          if(summary.balance||summary.credit||summary.depositHeld)throw new DomainError('Confira o saldo, o crédito do cliente e a caução antes de encerrar.',409);
+          rental.status='closed';result=detail(rental);
+        } else if(action==='reopen'&&method==='POST'){
+          input=reopenInput.parse(input);
+          if(role!=='admin')throw new DomainError('Reabertura exige administrador.',403);
+          if(rental.status!=='closed'||typeof input?.reason!=='string'||!input.reason.trim()||input.reason.trim().length>500)throw new DomainError('Informe o motivo para reabrir uma reserva encerrada.',409);
+          rental.status='returned';(rental.reopenings??=[]).push({id:crypto.randomUUID(),reason:input.reason.trim(),created_at:new Date().toISOString()});result=detail(rental);
+        } else if (!action&&method === "GET") result = detail(rental);
+        else if(action==='status'&&method==='POST') {
           const d = transitionInput.parse(input);
           assertTransition(rental.status as RentalStatus, d.status);
           if (d.status === "delivered") {
@@ -337,8 +386,8 @@ export function createDemo(storage: Storage) {
             for (const l of rental.lines ?? []) {
               const item = data.items.find((i) => i.id === l.item_id)!;
               const available = availableQuantity(
-                item.quantity,
-                rental.starts_at,
+                item.quantity-maintenanceQuantity(item.id),
+                capacityWindowStart(d.status,rental.starts_at,new Date().toISOString()),
                 rental.ends_at,
                 occupation(item.id, rental.id),
                 new Date().toISOString(),
@@ -352,7 +401,7 @@ export function createDemo(storage: Storage) {
           rental.status = d.status;
           rental.cancellation_reason = d.reason;
           result = detail(rental);
-        }
+        }else throw new DomainError("Operação indisponível nesta demonstração.",404);
       } else if (route === "/team" && method === "GET") {
         if (role !== "admin")
           throw new DomainError("Acesso exclusivo do administrador.", 403);

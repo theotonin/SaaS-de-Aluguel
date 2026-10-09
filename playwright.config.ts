@@ -10,9 +10,9 @@ export default defineConfig({
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
     },
   },
-  webServer: {
+  webServer: [{
     command: "npm run dev:demo -- --port 5178",
     url: "http://127.0.0.1:5178",
     reuseExistingServer: !process.env.CI,
-  },
+  },{command:"npm run dev -- --port 5183",url:"http://127.0.0.1:5183",reuseExistingServer:!process.env.CI}],
 });

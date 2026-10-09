@@ -1,3 +1,5 @@
+import {recordReturn,releaseMaintenance,closeRental,reopenRental} from './returns.ts';
+import {financeDetails,recordFinance} from './payments.ts';
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJson as readBody } from "./read-json.ts";
 import { clientAddress } from "./client-address.ts";
@@ -31,6 +33,7 @@ import {
   idempotent,
   audit,
   occupations,
+  maintenanceQuantity,
 } from "./rentals.ts";
 
 type Options = { origin: string; production: boolean; trustedProxy?: string; clientIp?: (req: IncomingMessage) => string };
@@ -232,6 +235,13 @@ export function createApp(db: Database, options: Options) {
       const body = mutates ? await readBody(req) : undefined;
       let status = 200;
       const result = await tenant(db, user.organization_id, async (sql) => {
+        const recovery=path.match(/^\/api\/operations\/([^/]+)$/);
+        if(recovery&&method==='GET'){
+          const key=z.uuid().parse(recovery[1]);
+          await sql.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user.organization_id+user.id+key]);
+          const row=(await sql.query('SELECT response FROM idempotency WHERE organization_id=$1 AND actor_id=$2 AND key=$3',[user.organization_id,user.id,key])).rows[0];
+          return {found:!!row,result:row?.response??null};
+        }
         if (path === "/api/customers" && method === "GET")
           return (
             await sql.query("SELECT * FROM customers ORDER BY name LIMIT 2000")
@@ -251,7 +261,7 @@ export function createApp(db: Database, options: Options) {
         }
         if (path === "/api/items" && method === "GET")
           return (
-            await sql.query("SELECT * FROM items ORDER BY name LIMIT 2000")
+            await sql.query("SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i ORDER BY i.name LIMIT 2000")
           ).rows;
         if (path === "/api/items" && method === "POST") {
           can("admin");
@@ -293,6 +303,8 @@ export function createApp(db: Database, options: Options) {
             await sql.query("SELECT * FROM items WHERE id=$1 FOR UPDATE", [id])
           ).rows[0];
           if (!current) throw new DomainError("Material não encontrado.", 404);
+          const maintenance = await maintenanceQuantity(sql, id);
+          if (d.quantity < maintenance) throw new DomainError("O acervo total não pode ficar abaixo da quantidade em manutenção.",409);
           const committed = await occupations(sql, id);
           if (
             d.quantity < current.quantity &&
@@ -321,13 +333,13 @@ export function createApp(db: Database, options: Options) {
               .datetime({ offset: true })
               .parse(url.searchParams.get("end"));
           const rows = (
-            await sql.query("SELECT * FROM items ORDER BY name LIMIT 2000")
+            await sql.query("SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i ORDER BY i.name LIMIT 2000")
           ).rows;
           return Promise.all(
             rows.map(async (item) => ({
               ...item,
               available: availableQuantity(
-                item.quantity,
+                item.quantity - item.maintenance_quantity,
                 start,
                 end,
                 await occupations(sql, item.id),
@@ -349,6 +361,25 @@ export function createApp(db: Database, options: Options) {
           return idempotent(sql, user as any, key, { path, body }, () =>
             createRental(sql, user as any, body),
           );
+        }
+        const physical = path.match(/^\/api\/rentals\/([^/]+)\/(returns|close|reopen)$/);
+        const maintenance = path.match(/^\/api\/rentals\/([^/]+)\/maintenance\/([^/]+)\/release$/);
+        if ((physical || maintenance) && method === "POST") {
+          const id=z.uuid().parse((physical || maintenance)![1]);
+          const action=physical?.[2] ?? "maintenance";
+          if(action==='returns'||action==='maintenance')can('admin','operator');
+          else if(action==='reopen')can('admin');else can('admin','attendant');
+          const key=z.uuid().parse(req.headers['idempotency-key']);
+          return idempotent(sql,user as any,key,{path,body},()=> action==='returns'?recordReturn(sql,user as any,id,body):action==='maintenance'?releaseMaintenance(sql,user as any,id,z.uuid().parse(maintenance![2]),body):action==='close'?closeRental(sql,user as any,id,body):reopenRental(sql,user as any,id,body));
+        }
+        const finance=path.match(/^\/api\/rentals\/([^/]+)\/finance$/);
+        if(finance){
+          can('admin','attendant');const id=z.uuid().parse(finance[1]);
+          if(method==='GET')return financeDetails(sql,id);
+          if(method==='POST'){
+            const key=z.uuid().parse(req.headers['idempotency-key']);
+            return idempotent(sql,user as any,key,{path,body},()=>recordFinance(sql,user as any,id,body));
+          }
         }
         const rentalMatch = path.match(/^\/api\/rentals\/([^/]+)(\/status)?$/);
         if (rentalMatch) {

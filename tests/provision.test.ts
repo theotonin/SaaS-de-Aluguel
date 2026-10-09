@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from "node:fs/promises";
 import { PGlite } from '@electric-sql/pglite';
 import type { Database, SQL } from '../packages/database/index.ts';
 import { migrate } from '../packages/database/migrate.ts';
@@ -15,7 +16,7 @@ function adapter(pg: PGlite): Database {
 test('migrations are repeatable and refuse altered history; bootstrap never overwrites existing credentials', async () => {
   const pg = new PGlite(); const db = adapter(pg);
   try {
-    assert.equal((await migrate(db)).length, 2);
+    assert.equal((await migrate(db)).length, 4);
     assert.deepEqual(await migrate(db), []);
     const input = { name: 'Gestor Tonin', email: 'ROOT@example.test', password: 'UmaSenhaSegura123!' };
     assert.equal(await createSuperadmin(db, input), 'created');
@@ -34,11 +35,11 @@ test('migrations are repeatable and refuse altered history; bootstrap never over
 test('legacy migration history upgrades without losing companies; bootstrap refuses a tenant account email', async () => {
   const pg = new PGlite(); const db = adapter(pg);
   try {
-    await migrate(db);
+    await pg.exec(await readFile(new URL("../packages/database/schema.sql",import.meta.url),"utf8"));
+    await pg.exec("CREATE TABLE schema_migrations(version integer PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now()); INSERT INTO schema_migrations(version) VALUES(1);");
     await db.query("INSERT INTO organizations(name,slug) VALUES('Preservada','preservada')");
     await db.query("INSERT INTO users(organization_id,name,email,password_hash,role) SELECT id,'Gestor','owner@example.test','hash','admin' FROM organizations");
-    await pg.exec('DELETE FROM schema_migrations WHERE version=2; ALTER TABLE schema_migrations DROP COLUMN checksum; ALTER TABLE schema_migrations DROP COLUMN name;');
-    assert.equal((await migrate(db)).length, 1);
+    assert.equal((await migrate(db)).length, 3);
     assert.equal((await db.query('SELECT * FROM organizations')).rows.length, 1);
     await assert.rejects(createSuperadmin(db, { name: 'Root', email: 'owner@example.test', password: 'UmaSenhaSegura123!' }), /já pertence/);
     assert.equal((await db.query('SELECT role FROM users')).rows[0].role, 'admin');

@@ -79,9 +79,9 @@ export async function verifyRuntime(db: SQL): Promise<void> {
       "DATABASE_URL deve usar loca_runtime sem privilégios administrativos.",
     );
   const protection = await db.query(
-    `SELECT count(*)::int AS count FROM pg_class WHERE relnamespace='public'::regnamespace AND relname IN ('customers','items','rentals','rental_lines','idempotency','audit_log') AND relrowsecurity AND relforcerowsecurity AND relowner<>(SELECT oid FROM pg_roles WHERE rolname=current_user)`,
+    `SELECT count(*)::int AS count FROM pg_class WHERE relnamespace='public'::regnamespace AND relname IN ('customers','items','rentals','rental_lines','idempotency','audit_log','rental_returns','rental_return_lines','item_maintenance','maintenance_releases','rental_finance','rental_reopenings') AND relrowsecurity AND relforcerowsecurity AND relowner<>(SELECT oid FROM pg_roles WHERE rolname=current_user)`,
   );
-  if (protection.rows[0]?.count !== 6)
+  if (protection.rows[0]?.count !== 12)
     throw new Error(
       "Proteção RLS incompleta. Execute as migrations antes de iniciar.",
     );

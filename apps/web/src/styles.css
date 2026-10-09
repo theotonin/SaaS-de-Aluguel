@@ -1611,3 +1611,42 @@ textarea {
     break-inside: avoid;
   }
 }
+
+/* Physical return and manual ledger share the existing operational surfaces. */
+.returns-panel,.finance-panel,.close-actions,.operation-recovery{margin-top:24px;padding:24px;}
+.returns-panel h3,.finance-panel h3{margin:24px 0 12px;}
+.return-lines{display:grid;gap:20px;}
+.return-lines>div,.finance-panel fieldset{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+.return-lines h3{grid-column:1/-1;margin-bottom:0;}
+.finance-panel fieldset{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:20px;}
+.operation-recovery small{overflow-wrap:anywhere;}
+.close-actions form{display:grid;gap:16px;}
+@media(max-width:600px){.returns-panel,.finance-panel,.close-actions,.operation-recovery{padding:16px;}.return-lines>div,.finance-panel fieldset{grid-template-columns:1fr;}}
+@media print{.returns-panel form,.finance-panel form,.panel button,.close-actions,.operation-recovery{display:none!important;}.returns-panel,.finance-panel{color:#151918;border-color:#ccc;}.returns-panel p,.finance-panel p,.finance-panel span,.panel th,.panel td{color:#151918;}.table-wrap{overflow:visible;}thead{display:table-header-group;}tr{break-inside:avoid;}}
+
+/* Estrutura comum da família Tonin, seguindo a referência do Estoque. */
+.app-shell{display:grid;grid-template-columns:200px minmax(0,1fr);column-gap:32px;padding-inline:32px;align-items:start;}
+.app-header{grid-column:1/-1;display:flex;align-items:center;gap:24px;padding:22px 0;border-bottom:1px solid var(--line);}
+.app-header .brand{padding:0;letter-spacing:-.03em;white-space:nowrap;}
+.brand-divider{color:var(--muted);font-weight:400;margin-inline:4px;}
+.header-company{margin-left:auto;color:var(--muted);font-size:13px;}
+.header-profile{font-size:12px;color:var(--muted);}
+.sidebar{grid-column:1;position:sticky;inset:auto;top:24px;width:200px;padding:0 24px 0 0;margin-top:28px;background:transparent;border-right:1px solid var(--line);z-index:1;}
+.sidebar .workspace{padding:0;margin:0 0 20px;border:0;}
+.sidebar nav{gap:8px;}
+.nav-item{justify-content:flex-start;min-height:44px;border-radius:6px;}
+.sidebar-footer{margin-top:28px;flex-wrap:wrap;}
+.main-column{grid-column:2;margin:0;width:100%;min-width:0;}
+.topbar{padding:18px 0;height:auto;border:0;}
+main{padding:12px 0 24px;max-width:none;}
+.demo-tools{grid-column:1/-1;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.5;}
+.demo-tools details{margin-top:12px;max-width:100ch;}
+.demo-tools summary{cursor:pointer;color:var(--accent);min-height:44px;display:flex;align-items:center;gap:8px;}
+.demo-tools summary::before{content:'+';}
+.demo-tools details[open]>summary::before{content:'−';}
+.demo-tools details p{margin-top:10px;}
+.demo-actions{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-top:12px;}
+.demo-actions label{min-width:190px;font-size:13px;display:grid;gap:6px;}
+@media(max-width:999px){.app-shell{display:block;padding-inline:24px;}.app-header{flex-wrap:wrap;gap:12px;}.header-profile{flex-basis:100%;}.sidebar{position:static;width:auto;margin-top:24px;padding:0;border:0;}.sidebar .workspace,.sidebar-footer{display:none;}.sidebar nav{display:flex;flex-direction:row;overflow-x:auto;gap:8px;padding-bottom:12px;}.nav-item{width:auto;white-space:nowrap;flex-shrink:0;}.main-column{width:100%;margin:0;}.topbar{padding:12px 0;}main{padding:12px 0 24px;}}
+@media(max-width:600px){.app-shell{padding-inline:20px;}.app-header .brand{font-size:24px;}.header-company{margin-left:0;}.demo-actions{gap:12px;}.demo-actions label{flex:1 1 100%;}.demo-tools details p{overflow-wrap:anywhere;}}
+@media print{.app-shell{display:block;padding:0;}.app-header,.demo-tools{display:none!important;}.sidebar{display:none!important;}}

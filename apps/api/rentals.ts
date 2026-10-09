@@ -2,6 +2,7 @@ import type { SQL } from "../../packages/database/index.ts";
 import { rentalInput } from "../../packages/contracts/index.ts";
 import {
   availableQuantity,
+  capacityWindowStart,
   calculateTotal,
   rentalDays,
   assertTransition,
@@ -67,17 +68,31 @@ export async function rentalDetails(sql: SQL, id: string) {
   if (!rental) throw new DomainError("Reserva não encontrada.", 404);
   rental.lines = (
     await sql.query(
-      "SELECT * FROM rental_lines WHERE rental_id=$1 ORDER BY name",
+      `SELECT l.*,coalesce((SELECT sum(x.received_quantity) FROM rental_return_lines x WHERE x.rental_id=l.rental_id AND x.item_id=l.item_id),0)::int AS received_quantity,
+      coalesce((SELECT sum(x.damaged_quantity) FROM rental_return_lines x WHERE x.rental_id=l.rental_id AND x.item_id=l.item_id),0)::int AS damaged_quantity
+      FROM rental_lines l WHERE l.rental_id=$1 ORDER BY l.name`,
       [id],
     )
   ).rows;
+  rental.returns = (await sql.query(`SELECT h.id,h.created_at,jsonb_agg(jsonb_build_object('item_id',x.item_id,'name',l.name,'received_quantity',x.received_quantity,'damaged_quantity',x.damaged_quantity,'note',x.note) ORDER BY l.name) AS lines
+    FROM rental_returns h JOIN rental_return_lines x ON x.return_id=h.id AND x.organization_id=h.organization_id
+    JOIN rental_lines l ON l.rental_id=x.rental_id AND l.item_id=x.item_id AND l.organization_id=x.organization_id
+    WHERE h.rental_id=$1 GROUP BY h.id ORDER BY h.created_at,h.id`,[id])).rows;
+  rental.maintenance = (await sql.query(`SELECT m.*,i.name,coalesce((SELECT jsonb_agg(jsonb_build_object('id',x.id,'quantity',x.quantity,'note',x.note,'created_at',x.created_at) ORDER BY x.created_at,x.id) FROM maintenance_releases x WHERE x.maintenance_id=m.id AND x.organization_id=m.organization_id),'[]'::jsonb) AS releases FROM item_maintenance m JOIN items i ON i.id=m.item_id AND i.organization_id=m.organization_id WHERE m.rental_id=$1 ORDER BY m.created_at,m.id`,[id])).rows;
+  rental.reopenings = (await sql.query('SELECT id,reason,created_at FROM rental_reopenings WHERE rental_id=$1 ORDER BY created_at,id',[id])).rows;
   return rental;
+}
+export async function maintenanceQuantity(sql: SQL, itemId: string): Promise<number> {
+  return (await sql.query('SELECT coalesce(sum(remaining_quantity),0)::int AS quantity FROM item_maintenance WHERE item_id=$1',[itemId])).rows[0].quantity;
 }
 export async function occupations(sql: SQL, itemId: string, exclude?: string) {
   const { rows } = await sql.query(
-    `SELECT r.starts_at,r.ends_at,r.status,l.quantity FROM rental_lines l
+    `SELECT r.starts_at,r.ends_at,r.status,l.quantity,
+    coalesce((SELECT jsonb_agg(jsonb_build_object('at',h.created_at,'quantity',x.received_quantity) ORDER BY h.created_at,h.id)
+    FROM rental_return_lines x JOIN rental_returns h ON h.id=x.return_id AND h.organization_id=x.organization_id WHERE x.rental_id=r.id AND x.item_id=l.item_id),'[]'::jsonb) AS returns
+    FROM rental_lines l
     JOIN rentals r ON r.id=l.rental_id AND r.organization_id=l.organization_id
-    WHERE l.item_id=$1 AND r.status IN ('confirmed','separated','delivered') AND ($2::uuid IS NULL OR r.id<>$2)`,
+    WHERE l.item_id=$1 AND r.status IN ('confirmed','separated','delivered','returned','closed') AND ($2::uuid IS NULL OR r.id<>$2)`,
     [itemId, exclude ?? null],
   );
   return rows.map((row) => ({
@@ -85,6 +100,7 @@ export async function occupations(sql: SQL, itemId: string, exclude?: string) {
     end: new Date(row.ends_at).toISOString(),
     status: row.status,
     quantity: row.quantity,
+    returns: row.returns.map((part: any) => ({ at: new Date(part.at).toISOString(), quantity: part.quantity })),
   }));
 }
 export async function createRental(sql: SQL, actor: Actor, input: unknown) {
@@ -195,8 +211,8 @@ export async function transitionRental(
     for (const line of lines) {
       const item = items.find((i) => i.id === line.item_id)!;
       const available = availableQuantity(
-        item.quantity,
-        new Date(rental.starts_at).toISOString(),
+        item.quantity - await maintenanceQuantity(sql, item.id),
+        capacityWindowStart(status,new Date(rental.starts_at).toISOString(),new Date().toISOString()),
         new Date(rental.ends_at).toISOString(),
         await occupations(sql, item.id, id),
         new Date().toISOString(),

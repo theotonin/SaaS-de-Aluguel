@@ -61,7 +61,8 @@ test("mobile navigation and superadmin stay usable without page overflow", async
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByLabel("Perfil da demonstração").selectOption("superadmin");
+  await page.getByText("Perfis e opções",{exact: true}).click();
+  await page.getByLabel("Perfil simulado").selectOption("superadmin");
   await expect(
     page.getByRole("heading", { name: "Empresas", exact: true }),
   ).toBeVisible();

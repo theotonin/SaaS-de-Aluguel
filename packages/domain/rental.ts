@@ -14,6 +14,7 @@ export type Occupation = {
   end: string;
   quantity: number;
   status: string;
+  returns?: { at: string; quantity: number }[];
 };
 
 export class DomainError extends Error {
@@ -46,19 +47,19 @@ export function availableQuantity(
     to = Date.parse(end);
   const events: [number, number][] = [];
   for (const reservation of reservations) {
-    if (!["confirmed", "separated", "delivered"].includes(reservation.status))
-      continue;
+    if (!["confirmed", "separated", "delivered", "returned", "closed"].includes(reservation.status)) continue;
     const a = Date.parse(reservation.start);
-    const b =
-      reservation.status === "delivered" &&
-      Date.parse(reservation.end) <= Date.parse(now)
-        ? Infinity
-        : Date.parse(reservation.end);
-    if (a >= to || b <= from) continue;
-    events.push(
-      [Math.max(a, from), reservation.quantity],
-      [Math.min(b, to), -reservation.quantity],
-    );
+    const returned = reservation.returns ?? [];
+    const received = returned.reduce((sum, part) => sum + part.quantity, 0);
+    if (!Number.isSafeInteger(received) || received > reservation.quantity || returned.some(part => !Number.isSafeInteger(part.quantity) || part.quantity < 0 || !Number.isFinite(Date.parse(part.at))))
+      throw new DomainError("Histórico de devolução inconsistente.", 409);
+    const remaining = ["returned", "closed"].includes(reservation.status) ? 0 : reservation.quantity - received;
+    const expectedEnd = reservation.status === "delivered" && Date.parse(reservation.end) <= Date.parse(now) ? Infinity : Date.parse(reservation.end);
+    const parts = [...returned.map(part => ({ quantity: part.quantity, end: Date.parse(part.at) })), { quantity: remaining, end: expectedEnd }];
+    for (const part of parts) {
+      if (!part.quantity || a >= to || part.end <= from || part.end <= a) continue;
+      events.push([Math.max(a, from), part.quantity], [Math.min(part.end, to), -part.quantity]);
+    }
   }
   // Returns at a boundary free capacity before a new withdrawal at that instant.
   events.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -134,3 +135,5 @@ export function assertTransition(from: RentalStatus, to: RentalStatus): void {
   if (!transitions[from]?.includes(to))
     throw new DomainError("Esta mudança de etapa não é permitida.", 409);
 }
+
+export function capacityWindowStart(status:string,start:string,now:string):string {return status==='delivered'?new Date(Math.max(Date.parse(start),Date.parse(now))).toISOString().replace('.000Z','Z'):start;}

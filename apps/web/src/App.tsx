@@ -1,3 +1,4 @@
+import {mutationRecovery,type PendingMutation} from './mutation-recovery';
 import { matchesSearch } from "./search";
 import type { Screen } from "./types";
 import { accessibleAccent } from "./branding";
@@ -55,6 +56,11 @@ const adminNav = [
 ] as const;
 
 export function App() {
+  const [pending,setPending]=useState<PendingMutation|null>(mutationRecovery.pending());
+  const [detailLocked,setDetailLocked]=useState(false);
+  const [checking,setChecking]=useState(false);
+  const operationLocked=detailLocked||!!pending;
+  useEffect(()=>mutationRecovery.subscribe(()=>setPending(mutationRecovery.pending())),[]);
   const [user, setUser] = useState<User | null>(demo?.session() ?? null),
     [authLoading, setAuthLoading] = useState(!isDemo);
   const [screen, setScreen] = useState<Screen>("overview"),
@@ -74,12 +80,15 @@ export function App() {
   const [selected, setSelected] = useState<Rental | null>(null),
     [query, setQuery] = useState(""),
     [statusFilter, setStatusFilter] = useState("all");
+  useEffect(()=>{mutationRecovery.setIdentity(user?.organization_id?{userId:user.id,organizationId:user.organization_id}:null);},[user]);
   useEffect(() => {
     if (!isDemo)
       request<User>("/auth/me")
-        .then((u) => {
+        .then(async (u) => {
           setCsrf(u.csrf);
-          setUser(u);
+          if(u.organization_id&&!mutationRecovery.identityMatches({userId:u.id,organizationId:u.organization_id})){await request('/auth/logout','POST');setCsrf('');return;}
+          setUser(u);mutationRecovery.setIdentity(u.organization_id?{userId:u.id,organizationId:u.organization_id}:null);
+          const op=mutationRecovery.pending();if(op){setSelected(await request('/rentals/'+op.path.split('/')[2]));setScreen('detail');}
         })
         .catch(() => {})
         .finally(() => setAuthLoading(false));
@@ -135,6 +144,7 @@ export function App() {
     };
   }, [user, revision]);
   function go(next: Screen) {
+    if(operationLocked)return;
     setScreen(next);
     setForm(false);
     setQuery("");
@@ -142,9 +152,18 @@ export function App() {
     setEditingItem(null);
     setEditingCompany(null);
   }
-  function signedIn(u: User) {
-    setUser(u);
-    go(u.role === "superadmin" ? "companies" : "overview");
+  async function signedIn(u: User) {
+    if(mutationRecovery.pending()&&(!u.organization_id||!mutationRecovery.identityMatches({userId:u.id,organizationId:u.organization_id}))){await request('/auth/logout','POST');setCsrf('');throw new Error('Entre com a mesma empresa e conta da operação pendente para conferir o resultado.');}
+    mutationRecovery.setIdentity(u.organization_id?{userId:u.id,organizationId:u.organization_id}:null);setUser(u);
+    const op=mutationRecovery.pending();if(op){setSelected(await request('/rentals/'+op.path.split('/')[2]));setScreen('detail');}else go(u.role==='superadmin'?'companies':'overview');
+  }
+  async function reconcile(replay:boolean){
+    const op=mutationRecovery.pending();if(!op||op.inFlight||checking)return;setChecking(true);setError('');
+    try{
+      if(replay&&op.body!==undefined)await request(op.path,'POST',op.body,op.key);
+      else{const result=await request<{found:boolean}>('/operations/'+op.key);mutationRecovery.confirmLookup(op.key,result);window.dispatchEvent(new CustomEvent('mutation-resolved',{detail:{key:op.key}}));}
+      setSelected(await request('/rentals/'+op.path.split('/')[2]));setScreen('detail');setRevision(v=>v+1);setNotice('Conferência concluída. Consulte o histórico antes de registrar novos valores.');
+    }catch(e){setError((e as Error).message);}finally{setChecking(false);}
   }
   function saved(message: string) {
     setForm(false);
@@ -197,8 +216,69 @@ export function App() {
       <a className="skip-link" href="#main">
         Ir para o conteúdo
       </a>
+        {isDemo && (
+          <section className="demo-tools" aria-label="Controles da demonstração">
+            <span>
+
+              Demonstração · dados fictícios neste navegador
+            </span>
+            <details className="demo-options"><summary>Perfis e opções</summary><p>Login e perfis são simulados. Alterações ficam somente neste navegador.</p><div className="demo-actions">
+              <label>
+                Perfil simulado
+                <select
+                  aria-label="Perfil simulado"
+                  disabled={operationLocked}
+                  value={user.role}
+                  onChange={(e) => {
+                    demo!.selectRole(e.target.value as User["role"]);
+                    signedIn(demo!.session());
+                  }}
+                >
+                  <option value="admin">Locadora</option>
+                  <option value="operator">Operador</option>
+                  <option value="superadmin">Superadmin</option>
+                </select>
+              </label>
+              <button
+                className="secondary"
+                disabled={operationLocked}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Restaurar os exemplos? As alterações feitas nesta demonstração serão apagadas neste navegador.",
+                    )
+                  ) {
+                    demo!.reset();
+                    signedIn(demo!.session());
+                    setRevision((v) => v + 1);
+                  }
+                }}
+              >
+                <RotateCcw size={15} />
+                Restaurar demonstração
+              </button>
+            </div></details>
+          </section>
+        )}
+      <header className="app-header"><Brand /><span className="header-company">{admin ? "Administração Tonin" : user.organization?.name}</span><span className="header-profile">{user.name} · {labels[user.role]}</span>          {!isDemo && (
+            <button
+              className="secondary header-action"
+              aria-label="Sair da conta"
+              disabled={operationLocked}
+              onClick={async () => {
+                try {
+                  await request("/auth/logout", "POST");
+                  setUser(null);
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+            >
+              <LogOut size={18} /> Sair
+            </button>
+          )}
+</header>
       <aside className="sidebar">
-        <Brand />
         <div className="workspace">
           <span className="workspace-icon">
             {admin ? <ShieldCheck size={20} /> : <Building2 size={20} />}
@@ -217,6 +297,8 @@ export function App() {
               className={
                 effectiveScreen === n.id ? "nav-item selected" : "nav-item"
               }
+              aria-current={effectiveScreen===n.id ? "page" : undefined}
+              disabled={operationLocked}
               onClick={() => go(n.id as Screen)}
             >
               <n.icon size={19} />
@@ -233,22 +315,6 @@ export function App() {
             <strong>{user.name}</strong>
             <small>{labels[user.role]}</small>
           </div>
-          {!isDemo && (
-            <button
-              className="icon-button"
-              aria-label="Sair da conta"
-              onClick={async () => {
-                try {
-                  await request("/auth/logout", "POST");
-                  setUser(null);
-                } catch (e) {
-                  setError((e as Error).message);
-                }
-              }}
-            >
-              <LogOut size={18} />
-            </button>
-          )}
         </div>
       </aside>
       <div className="main-column">
@@ -266,48 +332,6 @@ export function App() {
             }).format(new Date())}
           </time>
         </header>
-        {isDemo && (
-          <div className="demo-bar">
-            <span>
-              <span className="demo-dot" />
-              Demonstração · dados fictícios
-            </span>
-            <div>
-              <label>
-                Perfil da demonstração
-                <select
-                  aria-label="Perfil da demonstração"
-                  value={user.role}
-                  onChange={(e) => {
-                    demo!.selectRole(e.target.value as User["role"]);
-                    signedIn(demo!.session());
-                  }}
-                >
-                  <option value="admin">Locadora</option>
-                  <option value="operator">Operador</option>
-                  <option value="superadmin">Superadmin</option>
-                </select>
-              </label>
-              <button
-                className="text-button"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Restaurar os exemplos? As alterações feitas nesta demonstração serão apagadas neste navegador.",
-                    )
-                  ) {
-                    demo!.reset();
-                    signedIn(demo!.session());
-                    setRevision((v) => v + 1);
-                  }
-                }}
-              >
-                <RotateCcw size={15} />
-                Restaurar exemplos
-              </button>
-            </div>
-          </div>
-        )}
         <main id="main" tabIndex={-1}>
           {notice && (
             <div className="notice" role="status">
@@ -333,6 +357,7 @@ export function App() {
               </button>
             </div>
           )}
+          {pending&&<section className="panel operation-recovery" aria-label="Conferência de envio pendente"><h2>Confirme o envio anterior</h2><p>{pending.inFlight?'Aguardando a resposta do envio.':'O resultado precisa ser conferido antes de registrar outra operação. Se você recarregou a página, preencha abaixo exatamente os dados do envio anterior; a mesma chave será usada para evitar duplicidade.'}</p><small>Operação {pending.key}</small><div className="form-actions">{pending.body!==undefined&&<button className="primary" disabled={pending.inFlight||checking} onClick={()=>void reconcile(true)}>Confirmar mesmo envio</button>}<button className="secondary" disabled={pending.inFlight||checking} onClick={()=>void reconcile(false)}>Conferir operação no servidor</button></div></section>}
           {loading ? (
             <div className="loading" role="status">
               Carregando sua operação…
@@ -418,6 +443,7 @@ export function App() {
                 <RentalDetail
                   rental={selected}
                   user={user}
+                  onOperationLock={setDetailLocked}
                   back={() => go("rentals")}
                   changed={(r) => {
                     setSelected(r);

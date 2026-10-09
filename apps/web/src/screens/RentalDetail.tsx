@@ -1,4 +1,7 @@
-import { useState } from "react";
+import {mutationKey} from '../mutation-recovery';
+import {ReturnForm} from './ReturnForm';
+import {FinancePanel} from './FinancePanel';
+import { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Printer, Check } from "lucide-react";
 import { request } from "../api";
 import { Badge, Heading, TextField, money, date } from "../components";
@@ -10,11 +13,13 @@ export function RentalDetail({
   user,
   back,
   changed,
+  onOperationLock,
 }: {
   rental: Rental;
   user: User;
   back: () => void;
   changed: (r: Rental) => void;
+  onOperationLock?: (locked:boolean)=>void;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -25,10 +30,16 @@ export function RentalDetail({
     status: string;
     reason: string;
   } | null>(null);
+  const [locks,setLocks]=useState({returns:false,finance:false});
+  const returnLock=useCallback((value:boolean)=>setLocks(s=>s.returns===value?s:{...s,returns:value}),[]);
+  const financeLock=useCallback((value:boolean)=>setLocks(s=>s.finance===value?s:{...s,finance:value}),[]);
+  const locked=busy||!!operation||locks.returns||locks.finance;
+  useEffect(()=>{onOperationLock?.(locked);return()=>onOperationLock?.(false);},[locked,onOperationLock]);
+  useEffect(()=>{const resolved=(event:Event)=>{if((event as CustomEvent<{key:string}>).detail?.key===operation?.key)setOperation(null);};window.addEventListener('mutation-resolved',resolved);return()=>window.removeEventListener('mutation-resolved',resolved);},[operation?.key]);
   async function transition(status: string) {
     setBusy(true);
     setError("");
-    const op = operation ?? { key: crypto.randomUUID(), status, reason };
+    const op = operation ?? { key: mutationKey('/rentals/'+rental.id+(status==='closed'?'/close':status==='reopened'?'/reopen':'/status')), status, reason };
     if (
       operation &&
       (operation.status !== status || operation.reason !== reason)
@@ -43,9 +54,9 @@ export function RentalDetail({
     try {
       changed(
         await request(
-          "/rentals/" + rental.id + "/status",
+          "/rentals/" + rental.id + (status==='closed'?'/close':status==='reopened'?'/reopen':'/status'),
           "POST",
-          { status, reason },
+          status==='closed'?{}:status==='reopened'?{reason}:{ status, reason },
           op.key,
         ),
       );
@@ -55,7 +66,7 @@ export function RentalDetail({
       setError((e as Error).message);
       if (
         typeof (e as { status?: number }).status === "number" &&
-        (e as { status: number }).status < 500
+        (e as { status: number }).status < 500 && ![401,408,429].includes((e as {status:number}).status)
       )
         setOperation(null);
     } finally {
@@ -71,10 +82,10 @@ export function RentalDetail({
         ? { status: "separated", label: "Marcar como separada" }
         : rental.status === "separated"
           ? { status: "delivered", label: "Registrar entrega" }
-          : null;
+          : rental.status==='returned'?{status:'closed',label:'Encerrar reserva'}:null;
   return (
     <>
-      <button className="text-button back" onClick={back}>
+      <button className="text-button back" disabled={locked} onClick={back}>
         <ArrowLeft size={17} />
         Voltar às reservas
       </button>
@@ -88,13 +99,13 @@ export function RentalDetail({
       >
         <button className="secondary" onClick={() => window.print()}>
           <Printer size={17} />
-          Imprimir orçamento
+          Imprimir reserva e extrato
         </button>
         {next &&
-          ((next.status === "confirmed" && commercial) ||
-            (next.status !== "confirmed" && operational)) && (
+          (( ["confirmed","closed"].includes(next.status) && commercial) ||
+            (!["confirmed","closed"].includes(next.status) && operational)) && (
             <button
-              disabled={busy}
+              disabled={locked}
               className="primary"
               onClick={() => void transition(next.status)}
             >
@@ -193,12 +204,10 @@ export function RentalDetail({
           </dl>
         </div>
       </section>
-      {rental.status === "delivered" && (
-        <p className="footnote">
-          Entrega registrada. O fluxo de devolução e conferência será incluído
-          no próximo incremento.
-        </p>
-      )}
+      <ReturnForm rental={rental} user={user} changed={changed} onOperationLock={returnLock}/>
+      <FinancePanel rental={rental} user={user} changed={changed} onOperationLock={financeLock}/>
+      {!!rental.reopenings?.length&&<section className="panel"><h2>Histórico de reaberturas</h2>{rental.reopenings.map(entry=><p key={entry.id}>{date(entry.created_at)} · {entry.reason}</p>)}</section>}
+      {rental.status==='closed'&&user.role==='admin'&&<section className="panel close-actions"><h2>Reabrir conferência</h2><p>Use para registrar uma correção. O histórico anterior será preservado.</p><form onSubmit={e=>{e.preventDefault();void transition('reopened');}}><TextField label="Motivo da reabertura" required maxLength={500} value={reason} disabled={locked} onChange={e=>setReason(e.target.value)}/><button className="secondary" disabled={busy||locks.returns||locks.finance}>{operation?'Confirmar reabertura anterior':'Reabrir reserva'}</button></form></section>}
       {rental.status === "canceled" && (
         <p className="footnote">
           Motivo do cancelamento: {rental.cancellation_reason}

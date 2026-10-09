@@ -78,6 +78,7 @@ export function MaterialsScreen({
                   <th>Material</th>
                   <th>Categoria</th>
                   <th>Acervo total</th>
+                  <th>Em manutenção</th>
                   <th>Diária</th>
                   <th>
                     <span className="sr-only">Ações</span>
@@ -93,6 +94,7 @@ export function MaterialsScreen({
                     </td>
                     <td>{i.category}</td>
                     <td>{i.quantity} un.</td>
+                    <td>{i.maintenance_quantity??0} un.</td>
                     <td className="numeric">{money(i.unit_price)}</td>
                     <td>
                       {user.role === "admin" && (
