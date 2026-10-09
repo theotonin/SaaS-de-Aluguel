@@ -8,6 +8,7 @@ test('runtime rejects invalid origins and proxy addresses before creating a data
   await assert.rejects(runtime({ APP_ORIGIN: 'https://site.test/subpath' }), /apenas a origem/);
   await assert.rejects(runtime({ APP_ORIGIN: 'http://site.test', NODE_ENV: 'production' }), /HTTPS/);
   await assert.rejects(runtime({ APP_ORIGIN: 'https://site.test', TRUST_PROXY_ADDRESS: '*' }), /IP confiável/);
+  await assert.rejects(runtime({ APP_ORIGIN: 'https://site.test', NODE_ENV:'production' }), /LOGIN_RATE_LIMIT_SECRET/);
   await assert.rejects(runtime({ APP_ORIGIN: 'https://site.test' }), /DATABASE_URL/);
 });
 test('commercial serverless entry fails closed without configuration', async () => {

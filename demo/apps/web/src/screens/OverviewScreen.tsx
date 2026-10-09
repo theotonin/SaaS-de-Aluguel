@@ -8,25 +8,19 @@ import {
 
 import { Badge, Heading, Empty, money, date } from "../components";
 
-import type { Item, Rental } from "../types";
+import type { Item, Rental, OverviewSummary } from "../types";
 import type { Screen } from "../types";
 import { RentalTable } from "./RentalTable";
 
 export function OverviewScreen({
   canQuote,
   go,
-  activeRentals,
-  rentals,
-  items,
-  upcoming,
+  summary,
   openRental,
 }: {
   canQuote: boolean;
   go: (screen: Screen) => void;
-  activeRentals: Rental[];
-  rentals: Rental[];
-  items: Item[];
-  upcoming: Rental[];
+  summary: OverviewSummary;
   openRental: (rental: Rental) => void;
 }) {
   return (
@@ -45,22 +39,22 @@ export function OverviewScreen({
       <div className="summary-strip">
         <div>
           <span>Reservas em andamento</span>
-          <strong>{activeRentals.length}</strong>
+          <strong>{summary.active_count}</strong>
         </div>
         <div>
           <span>Orçamentos abertos</span>
           <strong>
-            {rentals.filter((r) => ["draft", "sent"].includes(r.status)).length}
+            {summary.open_count}
           </strong>
         </div>
         <div>
           <span>Materiais cadastrados</span>
-          <strong>{items.length}</strong>
+          <strong>{summary.materials}</strong>
         </div>
         <div>
           <span>Valor das reservas ativas</span>
           <strong>
-            {money(activeRentals.reduce((a, r) => a + Number(r.total), 0))}
+            {money(summary.active_value)}
           </strong>
         </div>
       </div>
@@ -73,9 +67,9 @@ export function OverviewScreen({
               <ArrowUpRight size={16} />
             </button>
           </div>
-          {upcoming.length ? (
+          {summary.upcoming.length ? (
             <div className="event-list">
-              {upcoming.slice(0, 5).map((r) => (
+            {summary.upcoming.map((r) => (
                 <button
                   className="event-row"
                   key={r.id}
@@ -142,9 +136,7 @@ export function OverviewScreen({
           </button>
         </div>
         <RentalTable
-          rentals={[...rentals]
-            .sort((a, b) => Number(b.number) - Number(a.number))
-            .slice(0, 5)}
+          rentals={summary.latest}
           open={openRental}
         />
       </section>

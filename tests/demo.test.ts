@@ -14,8 +14,8 @@ test("demo persists edits, protects capacity and keeps companies separate", asyn
     },
   };
   const demo = createDemo(storage);
-  const customers = await demo.request("/customers");
-  const items = await demo.request("/items");
+  const customers = (await demo.request("/customers")).items;
+  const items = (await demo.request("/items")).items;
   const item = items.find((i: any) => i.quantity > 0);
   const payload = {
     customerId: customers[0].id,
@@ -51,7 +51,7 @@ test("demo persists edits, protects capacity and keeps companies separate", asyn
     /disponíveis/,
   );
   assert.equal(
-    (await createDemo(storage).request("/rentals")).some(
+    (await createDemo(storage).request("/rentals")).items.some(
       (r: any) => r.id === rental.id,
     ),
     true,
@@ -68,8 +68,8 @@ test("demo persists edits, protects capacity and keeps companies separate", asyn
     plan: "Piloto",
   });
   demo.selectCompany(company.id);
-  assert.equal((await demo.request("/items")).length, 0);
-  assert.equal((await demo.request("/customers")).length, 0);
+  assert.equal((await demo.request("/items")).items.length, 0);
+  assert.equal((await demo.request("/customers")).items.length, 0);
 });
 test("damaged demo storage resets safely instead of crashing", async () => {
   const storage = {
@@ -77,5 +77,21 @@ test("damaged demo storage resets safely instead of crashing", async () => {
     setItem: () => {},
     removeItem: () => {},
   };
-  assert.ok((await createDemo(storage).request("/items")).length > 0);
+  assert.ok((await createDemo(storage).request("/items")).items.length > 0);
+});
+
+test('demo provides bounded searchable pages and matching today and finance views locally', async () => {
+  const demo=createDemo({getItem:()=>null,setItem:()=>{},removeItem:()=>{}});
+  const page=await demo.request('/customers?page=1&limit=1&search=Marina');
+  assert.equal(page.total,1);
+  assert.equal(page.items.length,1);
+  assert.match(page.items[0].name,/Marina/);
+  const today=await demo.request('/today');
+  assert.deepEqual(Object.keys(today).sort(),['maintenance','overdue','pickups','returns']);
+  const report=await demo.request('/finance/report?from=2027-01-01&to=2027-01-31');
+  assert.equal(report.from,'2027-01-01');
+  assert.equal(typeof report.received,'string');
+  assert.equal(typeof report.depositMovement,'string');
+  demo.selectRole('operator');
+  await assert.rejects(demo.request('/finance/report?from=2027-01-01&to=2027-01-31'),/permissão/);
 });

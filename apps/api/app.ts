@@ -1,6 +1,7 @@
 import {recordReturn,releaseMaintenance,closeRental,reopenRental} from './returns.ts';
 import {financeDetails,recordFinance} from './payments.ts';
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHmac } from 'node:crypto';
 import { readJson as readBody } from "./read-json.ts";
 import { clientAddress } from "./client-address.ts";
 import { z } from "zod";
@@ -35,15 +36,18 @@ import {
   occupations,
   maintenanceQuantity,
 } from "./rentals.ts";
+import { pageResult, parsePage, searchPredicate } from './list-query.ts';
+import { loadFinanceReport, parseReportPeriod, reportCsv } from './finance-report.ts';
 
-type Options = { origin: string; production: boolean; trustedProxy?: string; clientIp?: (req: IncomingMessage) => string };
+type Options = { origin: string; production: boolean; trustedProxy?: string; clientIp?: (req: IncomingMessage) => string; loginLimitSecret?: string };
 
 function send(res: ServerResponse, status: number, data: unknown) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(data));
 }
 export function createApp(db: Database, options: Options) {
-  const attempts = new Map<string, { count: number; until: number }>();
+  const rateLimitSecret = options.loginLimitSecret ?? 'loca-development-only-login-throttle-secret';
+  if(options.production&&(!options.loginLimitSecret||Buffer.byteLength(options.loginLimitSecret)<32))throw new Error('LOGIN_RATE_LIMIT_SECRET precisa ter pelo menos 32 bytes em produção.');
   const dummy = hashPassword(opaqueToken());
   const cookieName = options.production ? "__Host-loca" : "loca_session";
   const cookie = (value: string, expire = false) =>
@@ -73,20 +77,13 @@ export function createApp(db: Database, options: Options) {
             req.headers["x-forwarded-for"],
             options.trustedProxy,
           ),
-          now = Date.now();
-        for (const [key, value] of attempts)
-          if (value.until < now) attempts.delete(key);
-        const attempt = attempts.get(ip) ?? {
-          count: 0,
-          until: now + 15 * 60_000,
-        };
-        if (attempt.count >= 10 || attempts.size >= 10000)
+          key = createHmac('sha256', rateLimitSecret).update(ip).digest('hex');
+        const throttled = (await db.query<{ allowed: boolean }>('SELECT auth_login_attempt($1) AS allowed', [key])).rows[0];
+        if (!throttled?.allowed)
           throw new DomainError(
             "Muitas tentativas. Aguarde 15 minutos antes de tentar novamente.",
             429,
           );
-        attempt.count++;
-        attempts.set(ip, attempt);
         const data = loginInput.parse(await readBody(req));
         const found = (
           await db.query("SELECT * FROM auth_find_user($1)", [data.email])
@@ -97,7 +94,7 @@ export function createApp(db: Database, options: Options) {
         );
         if (!found?.active || !valid)
           throw new DomainError("E-mail ou senha incorretos.", 401);
-        attempts.delete(ip);
+        await db.query('SELECT auth_login_clear($1)', [key]);
         const token = opaqueToken(),
           csrf = opaqueToken();
         await db.query("SELECT auth_save_session($1,$2,$3)", [
@@ -242,10 +239,23 @@ export function createApp(db: Database, options: Options) {
           const row=(await sql.query('SELECT response FROM idempotency WHERE organization_id=$1 AND actor_id=$2 AND key=$3',[user.organization_id,user.id,key])).rows[0];
           return {found:!!row,result:row?.response??null};
         }
-        if (path === "/api/customers" && method === "GET")
-          return (
-            await sql.query("SELECT * FROM customers ORDER BY name LIMIT 2000")
-          ).rows;
+        if (path === "/api/customers" && method === "GET") {
+          const page = parsePage(url.searchParams), filter=searchPredicate(['name',"regexp_replace(phone,'[^0-9]','','g')",'email']);
+          const total = Number((await sql.query(`SELECT count(*)::int AS total FROM customers WHERE ${filter}`, [page.search])).rows[0].total);
+          const rows = (await sql.query(`SELECT * FROM customers WHERE ${filter} ORDER BY lower(name),id LIMIT $2 OFFSET $3`, [page.search,page.limit,page.offset])).rows;
+          return pageResult(rows,total,page);
+        }
+        if (path === '/api/overview' && method === 'GET') {
+          const summary = (await sql.query(`SELECT
+            count(*) FILTER(WHERE status IN ('confirmed','separated','delivered'))::int AS active_count,
+            count(*) FILTER(WHERE status IN ('draft','sent'))::int AS open_count,
+            COALESCE(sum(total) FILTER(WHERE status IN ('confirmed','separated','delivered')),0)::text AS active_value
+            FROM rentals`)).rows[0];
+          const materials = Number((await sql.query('SELECT count(*)::int AS count FROM items')).rows[0].count);
+          const upcoming = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE r.status IN ('confirmed','separated') AND r.starts_at>=now() ORDER BY r.starts_at,r.id LIMIT 5`)).rows;
+          const latest = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id ORDER BY r.number DESC,r.id LIMIT 5`)).rows;
+          return { ...summary, materials, upcoming, latest };
+        }
         if (path === "/api/customers" && method === "POST") {
           can("admin", "attendant");
           const d = customerInput.parse(body);
@@ -259,10 +269,12 @@ export function createApp(db: Database, options: Options) {
           await audit(sql, user as any, "customer.created", row.id);
           return row;
         }
-        if (path === "/api/items" && method === "GET")
-          return (
-            await sql.query("SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i ORDER BY i.name LIMIT 2000")
-          ).rows;
+        if (path === "/api/items" && method === "GET") {
+          const page = parsePage(url.searchParams), filter=searchPredicate(['i.name','i.category','i.description']);
+          const total = Number((await sql.query(`SELECT count(*)::int AS total FROM items i WHERE ${filter}`, [page.search])).rows[0].total);
+          const rows = (await sql.query(`SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i WHERE ${filter} ORDER BY lower(i.name),i.id LIMIT $2 OFFSET $3`, [page.search,page.limit,page.offset])).rows;
+          return pageResult(rows,total,page);
+        }
         if (path === "/api/items" && method === "POST") {
           can("admin");
           const d = itemInput.parse(body);
@@ -332,10 +344,10 @@ export function createApp(db: Database, options: Options) {
             end = z.iso
               .datetime({ offset: true })
               .parse(url.searchParams.get("end"));
-          const rows = (
-            await sql.query("SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i ORDER BY i.name LIMIT 2000")
-          ).rows;
-          return Promise.all(
+          const page = parsePage(url.searchParams), filter=searchPredicate(['i.name','i.category','i.description']);
+          const total = Number((await sql.query(`SELECT count(*)::int AS total FROM items i WHERE ${filter}`, [page.search])).rows[0].total);
+          const rows = (await sql.query(`SELECT i.*,coalesce((SELECT sum(m.remaining_quantity) FROM item_maintenance m WHERE m.item_id=i.id),0)::int AS maintenance_quantity FROM items i WHERE ${filter} ORDER BY lower(i.name),i.id LIMIT $2 OFFSET $3`, [page.search,page.limit,page.offset])).rows;
+          const items = await Promise.all(
             rows.map(async (item) => ({
               ...item,
               available: availableQuantity(
@@ -347,13 +359,22 @@ export function createApp(db: Database, options: Options) {
               ),
             })),
           );
+          return pageResult(items,total,page);
         }
-        if (path === "/api/rentals" && method === "GET")
-          return (
-            await sql.query(
-              `SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id ORDER BY r.starts_at DESC LIMIT 2000`,
-            )
-          ).rows;
+        if (path === "/api/rentals" && method === "GET") {
+          const page = parsePage(url.searchParams), rawStatus = url.searchParams.get('status'), search=searchPredicate(['c.name','r.number::text']);
+          const status = rawStatus && rawStatus !== 'all' ? z.enum(['draft','sent','confirmed','separated','delivered','returned','closed','canceled']).parse(rawStatus) : null;
+          const total = Number((await sql.query(`SELECT count(*)::int AS total FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE ${search} AND ($2::text IS NULL OR r.status=$2)`, [page.search,status])).rows[0].total);
+          const rows = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE ${search} AND ($2::text IS NULL OR r.status=$2) ORDER BY r.starts_at DESC,r.id LIMIT $3 OFFSET $4`, [page.search,status,page.limit,page.offset])).rows;
+          return pageResult(rows,total,page);
+        }
+        if (path === '/api/today' && method === 'GET') {
+          const pickups = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE (r.starts_at AT TIME ZONE 'America/Sao_Paulo')::date=(now() AT TIME ZONE 'America/Sao_Paulo')::date AND r.status IN ('confirmed','separated') ORDER BY r.starts_at,r.id LIMIT 100`)).rows;
+          const returnsToday = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE (r.ends_at AT TIME ZONE 'America/Sao_Paulo')::date=(now() AT TIME ZONE 'America/Sao_Paulo')::date AND r.status='delivered' ORDER BY r.ends_at,r.id LIMIT 100`)).rows;
+          const overdue = (await sql.query(`SELECT r.*,c.name AS customer_name FROM rentals r JOIN customers c ON c.id=r.customer_id AND c.organization_id=r.organization_id WHERE r.status='delivered' AND r.ends_at<now() ORDER BY r.ends_at,r.id LIMIT 100`)).rows;
+          const maintenance = (await sql.query(`SELECT i.id,i.name,i.category,sum(m.remaining_quantity)::int AS remaining_quantity FROM item_maintenance m JOIN items i ON i.id=m.item_id AND i.organization_id=m.organization_id WHERE m.remaining_quantity>0 GROUP BY i.id,i.name,i.category ORDER BY lower(i.name),i.id LIMIT 100`)).rows;
+          return { pickups, returns: returnsToday, overdue, maintenance };
+        }
         if (path === "/api/rentals" && method === "POST") {
           can("admin", "attendant");
           status = 201;
@@ -381,6 +402,14 @@ export function createApp(db: Database, options: Options) {
             return idempotent(sql,user as any,key,{path,body},()=>recordFinance(sql,user as any,id,body));
           }
         }
+        if (path === '/api/finance/report' && method === 'GET') {
+          can('admin','attendant');
+          const period = parseReportPeriod(url.searchParams);
+          const report = await loadFinanceReport(sql, period.from, period.until, user.role === 'admin');
+          if (url.searchParams.get('format') === 'csv')
+            return { csv: reportCsv(report, user.organization?.name ?? 'Locadora') };
+          return { ...report, dateRules: { ledger: 'Lançamentos agrupados pela data de registro em São Paulo; período inicial/final inclusivo.', receivables: 'Saldo calculado pelo valor da reserva e lançamentos atuais, agrupado pelo início da reserva em São Paulo.', deposits: 'Entradas e devoluções de caução aparecem como movimentos do período e não compõem a receita operacional.' } };
+        }
         const rentalMatch = path.match(/^\/api\/rentals\/([^/]+)(\/status)?$/);
         if (rentalMatch) {
           const id = z.uuid().parse(rentalMatch[1]);
@@ -399,6 +428,11 @@ export function createApp(db: Database, options: Options) {
         }
         throw new DomainError("Página não encontrada.", 404);
       });
+      if (result && typeof result === 'object' && 'csv' in result) {
+        res.writeHead(status, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="tonin-loca-financeiro.csv"' });
+        res.end((result as { csv: string }).csv);
+        return;
+      }
       send(res, status, result);
     } catch (error: any) {
       if (error instanceof z.ZodError) {

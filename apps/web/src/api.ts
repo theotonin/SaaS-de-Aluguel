@@ -51,7 +51,7 @@ export async function request<T = any>(
     );
   }
   let data:any;
-  try{data=await res.json();}catch{
+  try{data=path.includes('/finance/report')&&path.includes('format=csv')?{csv:await res.text()}:await res.json();}catch{
     if(tracked)mutationRecovery.fail(key!,res.ok?undefined:res.status);
     throw new Error('O servidor não respondeu como esperado. Confira o envio anterior antes de repetir.');
   }finally{window.clearTimeout(timeout);}

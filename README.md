@@ -22,6 +22,9 @@ A demo abre diretamente na locadora fictícia **Celebra Locações**. O seletor 
 ## O que já funciona
 
 - Painel, agenda de saídas/retornos previstos e filtros de reservas.
+- Visão operacional agregada sem varrer páginas, com tela Hoje para retiradas, devoluções previstas, atrasos e materiais em manutenção.
+- Listas de clientes, materiais e reservas com busca e paginação limitada por empresa.
+- Relatório financeiro por período com recebimentos, valores a receber, cauções separadas, despesas por permissão e CSV seguro.
 - Cadastro de clientes e endereços; materiais, categorias, quantidades e diárias.
 - Orçamento com vários materiais, período, transporte, desconto, observações e impressão.
 - Disponibilidade pelo pico de ocupação simultânea; confirmação transacional com bloqueio dos materiais.
@@ -103,9 +106,9 @@ Em ambiente com navegador instalado, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` pode 
 
 ## Próximas entregas e limites
 
-Kits, fotos e armazenamento persistente, catálogo público e relatórios financeiros consolidados continuam pendentes. Também são necessários ciclo de recuperação/troca de senha, desativação da equipe e assinatura/trial com histórico antes da operação comercial completa. O cadastro atual de plano e suspensão é administrativo; não processa cobranças.
+Kits, fotos e armazenamento persistente, catálogo público e ciclo de recuperação/troca de senha continuam pendentes. Desativação da equipe e assinatura/trial com histórico também são necessários antes da operação comercial completa. O cadastro atual de plano e suspensão é administrativo; não processa cobranças.
 
-As listas operacionais retornam até 2.000 registros; a paginação deverá preceder o crescimento além do piloto. Não há edição de período de reserva confirmada nesta entrega. Impressão não é contrato com assinatura eletrônica nem documento fiscal. Não há emissão fiscal, pagamento, envio de mensagens ou integração externa simulada.
+As consultas de listas usam páginas de no máximo 100 registros; a interface permite pesquisar páginas posteriores. Não há edição de período de reserva confirmada nesta entrega. Impressão não é contrato com assinatura eletrônica nem documento fiscal. Não há emissão fiscal, pagamento, envio de mensagens ou integração externa simulada.
 
 A interface da demo é sincronizada da versão comercial por `npm run demo:sync`; `npm run demo:check` verifica igualdade das telas, estilos, fontes e regras. A única substituição é o adaptador local de dados. Não edite manualmente as cópias em `demo/apps` e `demo/packages`.
 

@@ -7,6 +7,7 @@ const files = [
   { version: 2, name: 'runtime-hardening', path: './migrations/002-runtime-hardening.sql' },
   { version: 3, name: 'rental-returns', path: './migrations/003-rental-returns.sql' },
   { version: 4, name: 'rental-finance', path: './migrations/004-rental-finance.sql' },
+  { version: 5, name: 'login-throttle', path: './migrations/005-login-throttle.sql' },
 ];
 export async function migrate(db: Database): Promise<number[]> {
   const migrations = await Promise.all(files.map(async file => {

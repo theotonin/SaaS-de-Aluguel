@@ -16,7 +16,7 @@ function adapter(pg: PGlite): Database {
 test('migrations are repeatable and refuse altered history; bootstrap never overwrites existing credentials', async () => {
   const pg = new PGlite(); const db = adapter(pg);
   try {
-    assert.equal((await migrate(db)).length, 4);
+    assert.equal((await migrate(db)).length, 5);
     assert.deepEqual(await migrate(db), []);
     const input = { name: 'Gestor Tonin', email: 'ROOT@example.test', password: 'UmaSenhaSegura123!' };
     assert.equal(await createSuperadmin(db, input), 'created');
@@ -39,7 +39,7 @@ test('legacy migration history upgrades without losing companies; bootstrap refu
     await pg.exec("CREATE TABLE schema_migrations(version integer PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now()); INSERT INTO schema_migrations(version) VALUES(1);");
     await db.query("INSERT INTO organizations(name,slug) VALUES('Preservada','preservada')");
     await db.query("INSERT INTO users(organization_id,name,email,password_hash,role) SELECT id,'Gestor','owner@example.test','hash','admin' FROM organizations");
-    assert.equal((await migrate(db)).length, 3);
+    assert.equal((await migrate(db)).length, 4);
     assert.equal((await db.query('SELECT * FROM organizations')).rows.length, 1);
     await assert.rejects(createSuperadmin(db, { name: 'Root', email: 'owner@example.test', password: 'UmaSenhaSegura123!' }), /já pertence/);
     assert.equal((await db.query('SELECT role FROM users')).rows[0].role, 'admin');

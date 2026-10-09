@@ -1,8 +1,9 @@
 import { Plus } from "lucide-react";
 
-import { Heading, Empty, money } from "../components";
+import { Heading, Empty, money, Pagination } from "../components";
 import { ItemForm } from "../forms";
 import type { User, Item } from "../types";
+import type { PageInfo } from '../types';
 
 import { SearchInput } from "./SearchInput";
 export function MaterialsScreen({
@@ -16,6 +17,8 @@ export function MaterialsScreen({
   matches,
   query,
   setQuery,
+  pageInfo,
+  onPage,
 }: {
   user: User;
   setEditingItem: (item: Item | null) => void;
@@ -27,6 +30,8 @@ export function MaterialsScreen({
   matches: (value: string) => boolean;
   query: string;
   setQuery: (value: string) => void;
+  pageInfo: PageInfo;
+  onPage: (page:number)=>void;
 }) {
   const visible = items.filter((i) => matches(`${i.name} ${i.category}`));
   return (
@@ -63,7 +68,7 @@ export function MaterialsScreen({
           placeholder="Buscar material ou categoria"
         />
         <span className="muted" role="status">
-          {visible.length} de {items.length} materiais
+          {visible.length} de {pageInfo.total} materiais
         </span>
         <span className="muted">
           {items.length} de {user.organization?.item_limit} materiais do plano
@@ -134,6 +139,7 @@ export function MaterialsScreen({
           </Empty>
         )}
       </section>
+      <Pagination {...pageInfo} onPage={onPage}/>
       <p className="footnote">
         Acervo total é a quantidade cadastrada. Consulte a disponibilidade por
         período ao montar um orçamento.

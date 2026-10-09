@@ -98,10 +98,14 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
     await login("a@example.test");
     assert.equal((await request("/admin/companies")).res.status, 403);
     const customer = await request("/customers", "POST", {
-      name: "Cliente A",
+      name: "João Cliente A",
       phone: "11999999999",
     });
     assert.equal(customer.res.status, 201);
+    const customerPage=await request('/customers?page=1&limit=1&search=joao');
+    assert.equal(customerPage.res.status,200);
+    assert.deepEqual({total:customerPage.data.total,page:customerPage.data.page,limit:customerPage.data.limit,count:customerPage.data.items.length},{total:1,page:1,limit:1,count:1});
+    assert.equal((await request('/customers?search=119999')).data.total,1,'numeric searches match normalized phone digits');
     const item = await request("/items", "POST", {
       name: "Cadeira",
       category: "Mobiliário",
@@ -109,6 +113,9 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
       unitPrice: 500,
     });
     assert.equal(item.res.status, 201);
+    const flexibleItems=await request('/items?page=1&limit=1&search=CAdeira%20Mobiliario');
+    assert.equal(flexibleItems.data.total,1);
+    assert.equal(flexibleItems.data.items[0].id,item.data.id);
     const payload = {
       customerId: customer.data.id,
       start: "2026-12-20T12:00:00Z",
@@ -159,6 +166,15 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
       ).res.status,
       200,
     );
+    const overview=await request('/overview');
+    assert.equal(overview.data.active_count,1);
+    assert.equal(overview.data.active_value,'4000');
+    assert.equal(overview.data.latest.length,1);
+    const today=await request('/today');
+    assert.deepEqual(Object.keys(today.data).sort(),['maintenance','overdue','pickups','returns']);
+    const financeReport=await request('/finance/report?from=2026-12-01&to=2026-12-31');
+    assert.equal(financeReport.data.receivable,'4000');
+    assert.equal(financeReport.data.depositMovement,'0');
     const second = await request("/rentals", "POST", payload, {
       "idempotency-key": crypto.randomUUID(),
     });
@@ -191,6 +207,7 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
       role: "operator",
     });
     await login("op@example.test");
+    assert.equal((await request('/finance/report?from=2026-12-01&to=2026-12-31')).res.status,403);
     assert.equal(
       (await request("/customers", "POST", { name: "Bloqueado", phone: "1" }))
         .res.status,
@@ -208,7 +225,8 @@ test("HTTP workflow protects authentication, CSRF, tenant access and reservation
       403,
     );
     await login("b@example.test");
-    assert.equal((await request("/items")).data.length, 0);
+    const isolatedPage=await request('/items?page=1&limit=20');
+    assert.deepEqual({total:isolatedPage.data.total,items:isolatedPage.data.items.length},{total:0,items:0});
     assert.equal((await request(`/rentals/${rental.data.id}`)).res.status, 404);
     assert.equal(
       (

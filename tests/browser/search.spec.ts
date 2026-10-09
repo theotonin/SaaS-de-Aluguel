@@ -13,7 +13,7 @@ test("search supports phone numbers, email, flexible material terms and clear co
     page.getByRole("cell", { name: "Marina Oliveira", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("1 de 3 clientes", { exact: true }),
+    page.getByText("1 de 1 clientes", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Limpar busca", exact: true }).click();
   await expect(customers).toHaveValue("");
@@ -30,7 +30,7 @@ test("search supports phone numbers, email, flexible material terms and clear co
     page.getByRole("row").filter({ hasText: "Cadeira Tiffany branca" }),
   ).toBeVisible();
   await expect(
-    page.getByText("1 de 6 materiais", { exact: true }),
+    page.getByText("1 de 1 materiais", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: /^Reservas/ }).click();
   await page

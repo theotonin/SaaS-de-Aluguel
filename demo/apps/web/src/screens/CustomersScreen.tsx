@@ -1,8 +1,9 @@
 import { Plus } from "lucide-react";
 
-import { Heading, Empty } from "../components";
+import { Heading, Empty, Pagination } from "../components";
 import { CustomerForm } from "../forms";
 import type { Customer } from "../types";
+import type { PageInfo } from '../types';
 
 import { SearchInput } from "./SearchInput";
 export function CustomersScreen({
@@ -14,6 +15,8 @@ export function CustomersScreen({
   matches,
   query,
   setQuery,
+  pageInfo,
+  onPage,
 }: {
   canQuote: boolean;
   setForm: (value: boolean) => void;
@@ -23,6 +26,8 @@ export function CustomersScreen({
   matches: (value: string) => boolean;
   query: string;
   setQuery: (value: string) => void;
+  pageInfo: PageInfo;
+  onPage: (page:number)=>void;
 }) {
   const visible = customers.filter((c) =>
     matches(`${c.name} ${c.phone} ${c.email}`),
@@ -53,7 +58,7 @@ export function CustomersScreen({
           placeholder="Buscar nome, telefone ou e-mail"
         />
         <span className="muted" role="status">
-          {visible.length} de {customers.length} clientes
+          {visible.length} de {pageInfo.total} clientes
         </span>
       </div>
       <section className="panel">
@@ -94,6 +99,7 @@ export function CustomersScreen({
           </Empty>
         )}
       </section>
+      <Pagination {...pageInfo} onPage={onPage}/>
     </>
   );
 }

@@ -83,6 +83,8 @@ export type Audit = {
 
 export type Screen =
   | "overview"
+  | "today"
+  | "finance"
   | "agenda"
   | "rentals"
   | "items"
@@ -92,3 +94,8 @@ export type Screen =
   | "audit"
   | "quote"
   | "detail";
+
+export type PageInfo = { page: number; limit: number; total: number; pages: number };
+export type PageResponse<T> = PageInfo & { items: T[] };
+export type TodaySummary = { pickups: Rental[]; returns: Rental[]; overdue: Rental[]; maintenance: {id:string;name:string;category:string;remaining_quantity:number}[] };
+export type OverviewSummary = { active_count: number; open_count: number; active_value: string; materials: number; upcoming: Rental[]; latest: Rental[] };

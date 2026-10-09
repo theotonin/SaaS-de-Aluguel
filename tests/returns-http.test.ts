@@ -36,7 +36,7 @@ test('HTTP physical returns, maintenance, finance and closure enforce isolation,
   assert.equal(first.data.status,'delivered');assert.equal(first.data.lines[0].received_quantity,6);assert.equal(first.data.maintenance[0].remaining_quantity,2);
   const replay=await call(`/rentals/${rental.id}/returns`,'POST',body,key);assert.equal(replay.status,200);assert.deepEqual(replay.data,first.data);
   assert.equal((await call(`/rentals/${rental.id}/returns`,'POST',{lines:[{itemId:item.id,receivedQuantity:5,damagedQuantity:0}]},crypto.randomUUID())).status,409);
-  const availability=await call(`/availability?start=${encodeURIComponent(new Date().toISOString())}&end=${encodeURIComponent(end)}`);assert.equal(availability.data[0].available,4);
+  const availability=await call(`/availability?start=${encodeURIComponent(new Date().toISOString())}&end=${encodeURIComponent(end)}&page=1&limit=10`);assert.equal(availability.data.items[0].available,4);
   assert.equal((await call(`/rentals/${rental.id}/close`,'POST',{},crypto.randomUUID())).status,409);
   await login('att@example.test');assert.equal((await call('/operations/'+key)).data.found,false);assert.equal((await call(`/rentals/${rental.id}/returns`,'POST',{lines:[{itemId:item.id,receivedQuantity:4,damagedQuantity:0}]},crypto.randomUUID())).status,403);
   await login('b@example.test');assert.equal((await call(`/rentals/${rental.id}`)).status,404);assert.equal((await call(`/rentals/${rental.id}/finance`)).status,404);

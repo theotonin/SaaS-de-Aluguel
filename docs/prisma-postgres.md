@@ -15,6 +15,7 @@ Copie `.env.example` para `.env`, que está ignorado pelo Git. Preencha:
 | `DIRECT_URL` | URL **direct**, usada somente em migrations e bootstrap |
 | `DB_POOL_SIZE` | `3`, ajustável entre 1 e 20 por processo |
 | `APP_ORIGIN` | `http://localhost:5173` local ou a origem HTTPS definitiva |
+| `LOGIN_RATE_LIMIT_SECRET` | Segredo aleatório de pelo menos 32 bytes em produção, para HMAC do endereço do cliente |
 | `ADMIN_NAME` | Nome do primeiro superadmin |
 | `ADMIN_EMAIL` | Seu e-mail administrativo |
 | `ADMIN_PASSWORD` | Senha exclusiva, de 12 a 128 caracteres |
@@ -63,6 +64,7 @@ Entre com o superadmin criado. Em **Empresas**, cadastre a locadora e seu admini
 | `idempotency` | Evitar duplicação em reenvios de operações |
 | `audit_log` | Registro de ações administrativas e operacionais |
 | `schema_migrations` | Evolução versionada do banco |
+| `login_attempts` | Chaves HMAC e contador compartilhado por janela de login; sem endereço IP bruto |
 
 ## 4. Publicar na Vercel com banco
 
@@ -76,13 +78,14 @@ DATABASE_URL=<URL pooled privada>
 DB_POOL_SIZE=3
 APP_ORIGIN=https://seu-dominio-definitivo
 NODE_ENV=production
+LOGIN_RATE_LIMIT_SECRET=<segredo aleatório com pelo menos 32 bytes>
 ```
 
 A raiz sempre gera o frontend comercial, independentemente de `VITE_DEMO`. A demo agora está em `demo/`, com instalação e configuração Vercel próprias, sem API nem banco; veja [o guia da demo](../demo/README.md). `TONIN_DEPLOYMENT` não é mais necessário. A função comercial `api/[...path].ts` atende `/api/*` na mesma origem e reutiliza um pool por instância. Não precisa de servidor Express separado. Rotas do painel usam navegação interna; não há URLs de páginas adicionais que exijam fallback SPA.
 
 Execute migrations e bootstrap **antes** de liberar o acesso, usando `DIRECT_URL` apenas no seu ambiente administrativo local ou em job de release protegido. Não configure `DIRECT_URL`, `ADMIN_PASSWORD` ou bootstrap no frontend, no build público ou em requisições. Não há migrations automáticas no startup.
 
-Na Vercel, o adaptador trata corpos JSON já processados pelo runtime e usa somente o header de IP substituído pela plataforma. Fora da Vercel, headers enviados pelo visitante continuam ignorados, exceto quando `TRUST_PROXY_ADDRESS` identifica seu proxy controlado. O limite de login atual é por instância: antes de escala com várias instâncias, configure proteção centralizada na borda ou substitua o contador por um armazenamento compartilhado.
+Na Vercel, o adaptador trata corpos JSON já processados pelo runtime e usa somente o header de IP substituído pela plataforma. Fora da Vercel, headers enviados pelo visitante continuam ignorados, exceto quando `TRUST_PROXY_ADDRESS` identifica seu proxy controlado. O limite de login usa a tabela compartilhada PostgreSQL, com incremento atômico, janela de 15 minutos e limite de 10 tentativas. A chave persistida é HMAC-SHA-256 com `LOGIN_RATE_LIMIT_SECRET`; o endereço bruto não é armazenado. A tabela remove entradas expiradas e limita sua capacidade a 10 mil chaves. Em produção a API recusa iniciar sem o segredo configurado.
 
 Depois do deploy, `/api/health` deve responder `{"status":"ok"}`. Teste login, criação de uma empresa e acesso do administrador da locadora. Preview com outro domínio precisa de `APP_ORIGIN` próprio e banco de homologação; não compartilhe credenciais de produção com previews não confiáveis.
 
@@ -98,6 +101,14 @@ Se a credencial Prisma autenticar como proprietário/superusuário, ela continua
 
 Os testes embarcados verificam SQL, RLS, rollback, migrations, bootstrap e fluxo HTTP. `npm run test:postgres` valida também conexões TCP independentes e confirmação concorrente, exigindo `TEST_DATABASE_ADMIN_URL` para banco vazio e descartável. O teste recusa banco que já tenha a tabela `organizations`; não aponte para clientes reais. A pipeline usa um PostgreSQL temporário exclusivo.
 
-Sem suas URLs privadas, a conexão com **sua instância Prisma** e a implantação HTTPS não podem ser comprovadas. Após configurá-las, execute `db:migrate`, `admin:create`, `db:check` e os testes de acesso acima. Devoluções, financeiro, recuperação de senha e assinatura comercial continuam nas próximas entregas do produto.
+## Listas e relatórios
+
+Clientes, materiais, disponibilidade e reservas usam `page` (padrão 1), `limit` (padrão 50, máximo 100) e `search`. Reservas aceitam também `status`. Todas as respostas são paginadas e contêm `items`, `total`, `page`, `limit` e `pages`. A interface consulta páginas sob demanda, aplica pausa de busca e ignora resultados de consultas antigas. A busca trata maiúsculas/minúsculas, acentos portugueses e consultas numéricas como dígitos de telefone.
+
+O painel inicial usa uma consulta agregada, sem somar somente a primeira página. A área **Hoje** mostra retiradas e retornos na data de São Paulo, atrasos de reservas ainda entregues e unidades em manutenção. Abrir uma linha leva ao detalhe existente para executar a etapa apropriada.
+
+No relatório financeiro, o intervalo informado inclui as datas inicial e final no fuso `America/Sao_Paulo` (limite final exclusivo no dia seguinte). Pagamentos, estornos, cauções e despesas são agrupados pela data de lançamento. O saldo a receber usa os lançamentos atuais das reservas confirmadas, separadas, entregues, devolvidas ou encerradas cuja data de início cai no período. A variação de cauções usa movimentos lançados no período; o saldo de cauções retidas é um retrato atual das reservas ativas ou devolvidas iniciadas no período. Cauções não entram no resultado operacional. Despesas e resultados derivados delas só são exibidos a administradores. O CSV escapa células e neutraliza prefixos de fórmula. Totais são somados como inteiros de centavos e trafegam em strings para preservar precisão.
+
+Sem suas URLs privadas, a conexão com **sua instância Prisma** e a implantação HTTPS não podem ser comprovadas. Após configurá-las, execute `db:migrate`, `admin:create`, `db:check` e os testes de acesso acima. Recuperação de senha e assinatura comercial ainda dependem de uma entrega futura.
 
 Referência: [conexões oficiais do Prisma Postgres](https://www.prisma.io/docs/postgres/database/connecting-to-your-database), [runtime Node da Vercel](https://vercel.com/docs/functions/runtimes/node-js), [headers de IP da Vercel](https://vercel.com/docs/headers/request-headers).

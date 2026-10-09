@@ -1,9 +1,10 @@
 import { Plus } from "lucide-react";
 
-import { Heading, labels } from "../components";
+import { Heading, labels, Pagination } from "../components";
 
 import type { Rental } from "../types";
 import type { Screen } from "../types";
+import type { PageInfo } from '../types';
 import { RentalTable } from "./RentalTable";
 import { SearchInput } from "./SearchInput";
 export function ReservationsScreen({
@@ -16,6 +17,8 @@ export function ReservationsScreen({
   rentals,
   matches,
   openRental,
+  pageInfo,
+  onPage,
 }: {
   canQuote: boolean;
   go: (screen: Screen) => void;
@@ -26,6 +29,8 @@ export function ReservationsScreen({
   rentals: Rental[];
   matches: (value: string) => boolean;
   openRental: (rental: Rental) => void;
+  pageInfo: PageInfo;
+  onPage: (page:number)=>void;
 }) {
   const visible = rentals.filter(
     (r) =>
@@ -88,12 +93,13 @@ export function ReservationsScreen({
           </button>
         )}
         <span className="muted" role="status">
-          {visible.length} de {rentals.length} reservas
+          {visible.length} de {pageInfo.total} reservas
         </span>
       </div>
       <section className="panel">
         <RentalTable rentals={visible} open={openRental} />
       </section>
+      <Pagination {...pageInfo} onPage={onPage}/>
     </>
   );
 }

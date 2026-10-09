@@ -3,7 +3,7 @@ import { Plus, Trash2, CalendarDays } from "lucide-react";
 import { FormPanel, TextField, Field, value, cents, money } from "./components";
 import { request } from "./api";
 import { rentalDays, calculateTotal } from "../../../packages/domain/rental";
-import type { Company, Item, Customer, Rental } from "./types";
+import type { Company, Item, Customer, Rental, PageResponse } from "./types";
 
 type Base = { close: () => void; done: () => void };
 export function CustomerForm({ close, done }: Base) {
@@ -338,29 +338,31 @@ export function RentalForm({
   const tomorrow = new Date(now.getTime() + 86400000);
   const [start, setStart] = useState(inputDate(now)),
     [end, setEnd] = useState(inputDate(tomorrow));
+  const [customerSearch,setCustomerSearch]=useState(''),[customerPage,setCustomerPage]=useState(1),[customerPages,setCustomerPages]=useState(1),[customerOptions,setCustomerOptions]=useState(customers),[selectedCustomer,setSelectedCustomer]=useState<Customer|null>(null);
+  const [materialSearch,setMaterialSearch]=useState(''),[materialPage,setMaterialPage]=useState(1),[materialPages,setMaterialPages]=useState(1),[itemCache,setItemCache]=useState(items);
   const [lines, setLines] = useState([{ itemId: "", quantity: 1 }]);
   const [delivery, setDelivery] = useState("0"),
     [discount, setDiscount] = useState("0");
   const [available, setAvailable] = useState<Item[]>([]),
     [availabilityError, setAvailabilityError] = useState("");
   const operation = useRef(crypto.randomUUID());
+  useEffect(()=>{let active=true;const timer=window.setTimeout(()=>{request<PageResponse<Customer>>(`/customers?page=${customerPage}&limit=100&search=${encodeURIComponent(customerSearch)}`).then(result=>{if(!active)return;setCustomerPages(result.pages);setCustomerOptions(current=>{const loaded=customerPage===1?result.items:[...current,...result.items];return selectedCustomer&&!loaded.some(item=>item.id===selectedCustomer.id)?[selectedCustomer,...loaded]:loaded;});}).catch(e=>{if(active)setAvailabilityError((e as Error).message);});},250);return()=>{active=false;clearTimeout(timer);};},[customerSearch,customerPage]);
   useEffect(() => {
     let active = true;
-    setAvailable([]);
     setAvailabilityError("");
     const timer = setTimeout(() => {
       try {
         const from = isoDate(start),
           to = isoDate(end);
         rentalDays(from, to);
-        request<Item[]>(
+        request<PageResponse<Item>>(
           "/availability?start=" +
             encodeURIComponent(from) +
             "&end=" +
-            encodeURIComponent(to),
+            encodeURIComponent(to)+`&page=${materialPage}&limit=100&search=${encodeURIComponent(materialSearch)}`,
         )
           .then((d) => {
-            if (active) setAvailable(d);
+            if (active) {setMaterialPages(d.pages);setAvailable(current=>materialPage===1?d.items:[...current,...d.items.filter(item=>!current.some(x=>x.id===item.id))]);setItemCache(current=>[...current,...d.items.filter(item=>!current.some(x=>x.id===item.id))]);}
           })
           .catch((e) => {
             if (active) setAvailabilityError(e.message);
@@ -373,7 +375,7 @@ export function RentalForm({
       active = false;
       clearTimeout(timer);
     };
-  }, [start, end]);
+  }, [start, end, materialSearch, materialPage]);
   let days = 0,
     total = 0;
   try {
@@ -383,7 +385,7 @@ export function RentalForm({
         .filter((l) => l.itemId)
         .map((l) => ({
           quantity: l.quantity,
-          unitPrice: items.find((i) => i.id === l.itemId)?.unit_price ?? 0,
+          unitPrice: itemCache.find((i) => i.id === l.itemId)?.unit_price ?? items.find((i) => i.id === l.itemId)?.unit_price ?? 0,
         })),
       days,
       Math.round(Number(delivery) * 100),
@@ -419,14 +421,14 @@ export function RentalForm({
       <div className="form-grid">
         <Field label="Cliente">
           {(id) => (
-            <select id={id} name="customer" required autoFocus>
+            <div><input aria-label="Buscar cliente" placeholder="Buscar cliente…" value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);setCustomerPage(1);}}/><select id={id} name="customer" required autoFocus value={selectedCustomer?.id??''} onChange={e=>setSelectedCustomer(customerOptions.find(c=>c.id===e.target.value)??null)}>
               <option value="">Selecione o cliente</option>
-              {customers.map((c) => (
+              {customerOptions.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
+            </select>{customerPage<customerPages&&<button type="button" className="text-button" onClick={()=>setCustomerPage(p=>p+1)}>Carregar mais clientes</button>}</div>
           )}
         </Field>
         <div className="form-note">
@@ -466,7 +468,7 @@ export function RentalForm({
           <div className="rental-line" key={index}>
             <Field label={"Material " + (index + 1)}>
               {(id) => (
-                <select
+                <div><input aria-label="Buscar material" placeholder="Buscar material…" value={materialSearch} onChange={e=>{setMaterialSearch(e.target.value);setMaterialPage(1);}}/><select
                   id={id}
                   required
                   value={line.itemId}
@@ -479,7 +481,7 @@ export function RentalForm({
                   }
                 >
                   <option value="">Selecione um material</option>
-                  {items
+                  {[...available,...itemCache.filter(item=>lines.some(line=>line.itemId===item.id)&&!available.some(option=>option.id===item.id))]
                     .filter(
                       (item) =>
                         item.id === line.itemId ||
@@ -490,7 +492,7 @@ export function RentalForm({
                         {item.name}
                       </option>
                     ))}
-                </select>
+                </select>{materialPage<materialPages&&<button type="button" className="text-button" onClick={()=>setMaterialPage(p=>p+1)}>Carregar mais materiais</button>}</div>
               )}
             </Field>
             <TextField
@@ -514,7 +516,7 @@ export function RentalForm({
               <span>
                 {line.itemId
                   ? money(
-                      items.find((i) => i.id === line.itemId)?.unit_price ?? 0,
+                      itemCache.find((i) => i.id === line.itemId)?.unit_price ?? items.find((i) => i.id === line.itemId)?.unit_price ?? 0,
                     ) + " / diária"
                   : "Escolha o material"}
               </span>

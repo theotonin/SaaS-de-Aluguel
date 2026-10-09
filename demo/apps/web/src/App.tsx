@@ -3,6 +3,8 @@ import { matchesSearch } from "./search";
 import type { Screen } from "./types";
 import { accessibleAccent } from "./branding";
 import { OverviewScreen } from "./screens/OverviewScreen";
+import { TodayScreen } from './screens/TodayScreen';
+import { FinanceReportScreen } from './screens/FinanceReportScreen';
 import { AgendaScreen } from "./screens/AgendaScreen";
 import { ReservationsScreen } from "./screens/ReservationsScreen";
 import { CustomersScreen } from "./screens/CustomersScreen";
@@ -16,6 +18,8 @@ import { RentalDetail } from "./screens/RentalDetail";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   LayoutDashboard,
+  Clock3,
+  WalletCards,
   CalendarDays,
   ClipboardList,
   Package,
@@ -40,10 +44,16 @@ import type {
   Company,
   Member,
   Audit,
+  PageInfo,
+  PageResponse,
+  TodaySummary,
+  OverviewSummary,
 } from "./types";
 
 const nav = [
   { id: "overview", name: "Visão geral", icon: LayoutDashboard },
+  { id: 'today', name: 'Hoje', icon: Clock3 },
+  { id: 'finance', name: 'Financeiro', icon: WalletCards },
   { id: "agenda", name: "Agenda", icon: CalendarDays },
   { id: "rentals", name: "Reservas", icon: ClipboardList },
   { id: "items", name: "Materiais", icon: Package },
@@ -68,6 +78,9 @@ export function App() {
   const [customers, setCustomers] = useState<Customer[]>([]),
     [items, setItems] = useState<Item[]>([]),
     [rentals, setRentals] = useState<Rental[]>([]);
+  const [today, setToday] = useState<TodaySummary>({pickups:[],returns:[],overdue:[],maintenance:[]});
+  const [overview, setOverview] = useState<OverviewSummary>({active_count:0,open_count:0,active_value:'0',materials:0,upcoming:[],latest:[]});
+  const [listPages,setListPages]=useState<Record<'customers'|'items'|'rentals',PageInfo>>({customers:{page:1,limit:50,total:0,pages:1},items:{page:1,limit:50,total:0,pages:1},rentals:{page:1,limit:50,total:0,pages:1}});
   const [companies, setCompanies] = useState<Company[]>([]),
     [members, setMembers] = useState<Member[]>([]),
     [audit, setAudit] = useState<Audit[]>([]);
@@ -118,17 +131,22 @@ export function App() {
             }
           })
         : Promise.all([
-            request<Customer[]>("/customers"),
-            request<Item[]>("/items"),
-            request<Rental[]>("/rentals"),
+            request<PageResponse<Customer>>("/customers?page=1&limit=50"),
+            request<PageResponse<Item>>("/items?page=1&limit=50"),
+            request<PageResponse<Rental>>("/rentals?page=1&limit=50"),
+            request<OverviewSummary>('/overview'),
+            request<TodaySummary>('/today'),
             user.role === "admin"
               ? request<Member[]>("/team")
               : Promise.resolve([]),
-          ]).then(([c, i, r, m]) => {
+          ]).then(([c, i, r, summary, daily, m]) => {
             if (active) {
-              setCustomers(c);
-              setItems(i);
-              setRentals(r);
+              setCustomers(c.items);
+              setItems(i.items);
+              setRentals(r.items);
+              setOverview(summary);
+              setToday(daily);
+              setListPages({customers:c,items:i,rentals:r});
               setMembers(m);
             }
           });
@@ -143,11 +161,31 @@ export function App() {
       active = false;
     };
   }, [user, revision]);
+  useEffect(()=>{
+    const resource=screen==='customers'?'customers':screen==='items'?'items':screen==='rentals'?'rentals':null;
+    if(!user||!resource||user.role==='superadmin')return;
+    let current=true;
+    const timer=window.setTimeout(()=>{
+      const params=new URLSearchParams({page:String(listPages[resource].page),limit:'50',search:query});
+      if(resource==='rentals')params.set('status',statusFilter);
+      request<PageResponse<Customer|Item|Rental>>(`/${resource}?${params}`).then(response=>{
+        if(!current)return;
+        setListPages(value=>({...value,[resource]:response}));
+        if(resource==='customers')setCustomers(response.items as Customer[]);
+        else if(resource==='items')setItems(response.items as Item[]);
+        else setRentals(response.items as Rental[]);
+      }).catch(e=>{if(current)setError((e as Error).message);});
+    },250);
+    return()=>{current=false;window.clearTimeout(timer);};
+  },[user,screen,query,statusFilter,listPages.customers.page,listPages.items.page,listPages.rentals.page]);
+  function setListPage(resource:'customers'|'items'|'rentals',page:number){setListPages(value=>({...value,[resource]:{...value[resource],page}}));}
+  function setListSearch(value:string){setQuery(value);setListPages(pages=>({customers:{...pages.customers,page:1},items:{...pages.items,page:1},rentals:{...pages.rentals,page:1}}));}
   function go(next: Screen) {
     if(operationLocked)return;
     setScreen(next);
     setForm(false);
     setQuery("");
+    setListPages(pages=>({customers:{...pages.customers,page:1},items:{...pages.items,page:1},rentals:{...pages.rentals,page:1}}));
     setNotice("");
     setEditingItem(null);
     setEditingCompany(null);
@@ -193,8 +231,9 @@ export function App() {
   if (!user) return <Login onLogin={signedIn} />;
   const navigation = admin
     ? adminNav
-    : nav.filter((n) => n.id !== "team" || user.role === "admin");
+    : nav.filter((n) => (n.id !== "team" || user.role === "admin") && (n.id !== 'finance' || ['admin','attendant'].includes(user.role)));
   const matches = (text: string) => matchesSearch(text, query);
+  function setRentalStatusFilter(value:string){setStatusFilter(value);setListPages(pages=>({...pages,rentals:{...pages.rentals,page:1}}));}
   const activeRentals = rentals.filter(
     (r) =>
       !["draft", "sent", "canceled", "closed", "returned"].includes(r.status),
@@ -368,13 +407,12 @@ export function App() {
                 <OverviewScreen
                   canQuote={canQuote}
                   go={go}
-                  activeRentals={activeRentals}
-                  rentals={rentals}
-                  items={items}
-                  upcoming={upcoming}
+                  summary={overview}
                   openRental={openRental}
                 />
               )}
+              {effectiveScreen === 'today' && <TodayScreen today={today} openRental={openRental}/>}
+              {effectiveScreen === 'finance' && <FinanceReportScreen/>}
               {effectiveScreen === "agenda" && (
                 <AgendaScreen
                   activeRentals={activeRentals}
@@ -386,12 +424,14 @@ export function App() {
                   canQuote={canQuote}
                   go={go}
                   query={query}
-                  setQuery={setQuery}
+                  setQuery={setListSearch}
                   statusFilter={statusFilter}
-                  setStatusFilter={setStatusFilter}
+                  setStatusFilter={setRentalStatusFilter}
                   rentals={rentals}
                   matches={matches}
                   openRental={openRental}
+                  pageInfo={listPages.rentals}
+                  onPage={page=>setListPage('rentals',page)}
                 />
               )}
               {effectiveScreen === "quote" && (
@@ -465,7 +505,9 @@ export function App() {
                   customers={customers}
                   matches={matches}
                   query={query}
-                  setQuery={setQuery}
+                  setQuery={setListSearch}
+                  pageInfo={listPages.customers}
+                  onPage={page=>setListPage('customers',page)}
                 />
               )}
               {effectiveScreen === "items" && (
@@ -479,7 +521,9 @@ export function App() {
                   items={items}
                   matches={matches}
                   query={query}
-                  setQuery={setQuery}
+                  setQuery={setListSearch}
+                  pageInfo={listPages.items}
+                  onPage={page=>setListPage('items',page)}
                 />
               )}
               {effectiveScreen === "team" && (
