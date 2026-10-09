@@ -1,0 +1,502 @@
+import type { Screen } from "./types";
+import { accessibleAccent } from "./branding";
+import { OverviewScreen } from "./screens/OverviewScreen";
+import { AgendaScreen } from "./screens/AgendaScreen";
+import { ReservationsScreen } from "./screens/ReservationsScreen";
+import { CustomersScreen } from "./screens/CustomersScreen";
+import { MaterialsScreen } from "./screens/MaterialsScreen";
+import { TeamScreen } from "./screens/TeamScreen";
+import { CompaniesScreen } from "./screens/CompaniesScreen";
+import { AuditScreen } from "./screens/AuditScreen";
+import { Login } from "./screens/Login";
+import { Brand } from "./screens/Brand";
+import { RentalDetail } from "./screens/RentalDetail";
+import { useEffect, useState, type CSSProperties } from "react";
+import {
+  LayoutDashboard,
+  CalendarDays,
+  ClipboardList,
+  Package,
+  Users,
+  UserRoundCog,
+  Building2,
+  ShieldCheck,
+  ArrowLeft,
+  LogOut,
+  RotateCcw,
+  Check,
+  X,
+} from "lucide-react";
+import { request, isDemo, demo, setCsrf } from "./api";
+import { Empty, labels } from "./components";
+import { RentalForm } from "./forms";
+import type {
+  User,
+  Customer,
+  Item,
+  Rental,
+  Company,
+  Member,
+  Audit,
+} from "./types";
+
+const nav = [
+  { id: "overview", name: "Visão geral", icon: LayoutDashboard },
+  { id: "agenda", name: "Agenda", icon: CalendarDays },
+  { id: "rentals", name: "Reservas", icon: ClipboardList },
+  { id: "items", name: "Materiais", icon: Package },
+  { id: "customers", name: "Clientes", icon: Users },
+  { id: "team", name: "Equipe", icon: UserRoundCog },
+] as const;
+const adminNav = [
+  { id: "companies", name: "Empresas", icon: Building2 },
+  { id: "audit", name: "Auditoria", icon: ShieldCheck },
+] as const;
+
+export function App() {
+  const [user, setUser] = useState<User | null>(demo?.session() ?? null),
+    [authLoading, setAuthLoading] = useState(!isDemo);
+  const [screen, setScreen] = useState<Screen>("overview"),
+    [revision, setRevision] = useState(0);
+  const [customers, setCustomers] = useState<Customer[]>([]),
+    [items, setItems] = useState<Item[]>([]),
+    [rentals, setRentals] = useState<Rental[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]),
+    [members, setMembers] = useState<Member[]>([]),
+    [audit, setAudit] = useState<Audit[]>([]);
+  const [loading, setLoading] = useState(true),
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState("");
+  const [form, setForm] = useState(false),
+    [editingItem, setEditingItem] = useState<Item | null>(null),
+    [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [selected, setSelected] = useState<Rental | null>(null),
+    [query, setQuery] = useState(""),
+    [statusFilter, setStatusFilter] = useState("all");
+  useEffect(() => {
+    if (!isDemo)
+      request<User>("/auth/me")
+        .then((u) => {
+          setCsrf(u.csrf);
+          setUser(u);
+        })
+        .catch(() => {})
+        .finally(() => setAuthLoading(false));
+    const expire = () => {
+      if (!isDemo) {
+        setUser(null);
+        setCsrf("");
+      }
+    };
+    window.addEventListener("session-expired", expire);
+    return () => window.removeEventListener("session-expired", expire);
+  }, []);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    setLoading(true);
+    setError("");
+    const tasks =
+      user.role === "superadmin"
+        ? Promise.all([
+            request<Company[]>("/admin/companies"),
+            request<Audit[]>("/admin/audit"),
+          ]).then(([c, a]) => {
+            if (active) {
+              setCompanies(c);
+              setAudit(a);
+            }
+          })
+        : Promise.all([
+            request<Customer[]>("/customers"),
+            request<Item[]>("/items"),
+            request<Rental[]>("/rentals"),
+            user.role === "admin"
+              ? request<Member[]>("/team")
+              : Promise.resolve([]),
+          ]).then(([c, i, r, m]) => {
+            if (active) {
+              setCustomers(c);
+              setItems(i);
+              setRentals(r);
+              setMembers(m);
+            }
+          });
+    tasks
+      .catch((e) => {
+        if (active) setError(e.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user, revision]);
+  function go(next: Screen) {
+    setScreen(next);
+    setForm(false);
+    setQuery("");
+    setNotice("");
+    setEditingItem(null);
+    setEditingCompany(null);
+  }
+  function signedIn(u: User) {
+    setUser(u);
+    go(u.role === "superadmin" ? "companies" : "overview");
+  }
+  function saved(message: string) {
+    setForm(false);
+    setEditingItem(null);
+    setEditingCompany(null);
+    setRevision((v) => v + 1);
+    setNotice(message);
+  }
+  async function openRental(rental: Rental) {
+    try {
+      setSelected(await request("/rentals/" + rental.id));
+      go("detail");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  const admin = user?.role === "superadmin";
+  const effectiveScreen =
+    admin && !["companies", "audit"].includes(screen) ? "companies" : screen;
+  const canQuote = user?.role === "admin" || user?.role === "attendant";
+  if (authLoading)
+    return (
+      <div className="boot" role="status">
+        Abrindo Tonin Loca…
+      </div>
+    );
+  if (!user) return <Login onLogin={signedIn} />;
+  const navigation = admin
+    ? adminNav
+    : nav.filter((n) => n.id !== "team" || user.role === "admin");
+  const matches = (text: string) =>
+    text
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .includes(
+        query
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase(),
+      );
+  const activeRentals = rentals.filter(
+    (r) =>
+      !["draft", "sent", "canceled", "closed", "returned"].includes(r.status),
+  );
+  const upcoming = [...activeRentals].sort(
+    (a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at),
+  );
+  return (
+    <div
+      className="app-shell"
+      style={
+        user.organization
+          ? ({
+              "--accent": accessibleAccent(user.organization.accent),
+            } as CSSProperties)
+          : undefined
+      }
+    >
+      <a className="skip-link" href="#main">
+        Ir para o conteúdo
+      </a>
+      <aside className="sidebar">
+        <Brand />
+        <div className="workspace">
+          <span className="workspace-icon">
+            {admin ? <ShieldCheck size={20} /> : <Building2 size={20} />}
+          </span>
+          <div>
+            <strong>
+              {admin ? "Administração Tonin" : user.organization?.name}
+            </strong>
+            <small>{admin ? "Gestão da plataforma" : "Sua locadora"}</small>
+          </div>
+        </div>
+        <nav aria-label="Navegação principal">
+          {navigation.map((n) => (
+            <button
+              key={n.id}
+              className={
+                effectiveScreen === n.id ? "nav-item selected" : "nav-item"
+              }
+              onClick={() => go(n.id as Screen)}
+            >
+              <n.icon size={19} />
+              {n.name}
+              {n.id === "rentals" && activeRentals.length > 0 && (
+                <span className="nav-count">{activeRentals.length}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <span className="avatar">{user.name[0]}</span>
+          <div>
+            <strong>{user.name}</strong>
+            <small>{labels[user.role]}</small>
+          </div>
+          {!isDemo && (
+            <button
+              className="icon-button"
+              aria-label="Sair da conta"
+              onClick={async () => {
+                try {
+                  await request("/auth/logout", "POST");
+                  setUser(null);
+                } catch (e) {
+                  setError((e as Error).message);
+                }
+              }}
+            >
+              <LogOut size={18} />
+            </button>
+          )}
+        </div>
+      </aside>
+      <div className="main-column">
+        <header className="topbar">
+          <span>
+            {navigation.find((n) => n.id === effectiveScreen)?.name ??
+              "Reservas"}
+          </span>
+          <time>
+            {new Intl.DateTimeFormat("pt-BR", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+              timeZone: "America/Sao_Paulo",
+            }).format(new Date())}
+          </time>
+        </header>
+        {isDemo && (
+          <div className="demo-bar">
+            <span>
+              <span className="demo-dot" />
+              Demonstração · dados fictícios
+            </span>
+            <div>
+              <label>
+                Perfil da demonstração
+                <select
+                  aria-label="Perfil da demonstração"
+                  value={user.role}
+                  onChange={(e) => {
+                    demo!.selectRole(e.target.value as User["role"]);
+                    signedIn(demo!.session());
+                  }}
+                >
+                  <option value="admin">Locadora</option>
+                  <option value="operator">Operador</option>
+                  <option value="superadmin">Superadmin</option>
+                </select>
+              </label>
+              <button
+                className="text-button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Restaurar os exemplos? As alterações feitas nesta demonstração serão apagadas neste navegador.",
+                    )
+                  ) {
+                    demo!.reset();
+                    signedIn(demo!.session());
+                    setRevision((v) => v + 1);
+                  }
+                }}
+              >
+                <RotateCcw size={15} />
+                Restaurar exemplos
+              </button>
+            </div>
+          </div>
+        )}
+        <main id="main" tabIndex={-1}>
+          {notice && (
+            <div className="notice" role="status">
+              <Check size={18} />
+              {notice}
+              <button
+                className="icon-button"
+                aria-label="Fechar aviso"
+                onClick={() => setNotice("")}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          {error && (
+            <div className="error-block" role="alert">
+              <p>{error}</p>
+              <button
+                className="secondary"
+                onClick={() => setRevision((v) => v + 1)}
+              >
+                Tentar novamente
+              </button>
+            </div>
+          )}
+          {loading ? (
+            <div className="loading" role="status">
+              Carregando sua operação…
+            </div>
+          ) : error ? null : (
+            <>
+              {effectiveScreen === "overview" && (
+                <OverviewScreen
+                  canQuote={canQuote}
+                  go={go}
+                  activeRentals={activeRentals}
+                  rentals={rentals}
+                  items={items}
+                  upcoming={upcoming}
+                  openRental={openRental}
+                />
+              )}
+              {effectiveScreen === "agenda" && (
+                <AgendaScreen
+                  activeRentals={activeRentals}
+                  openRental={openRental}
+                />
+              )}
+              {effectiveScreen === "rentals" && (
+                <ReservationsScreen
+                  canQuote={canQuote}
+                  go={go}
+                  query={query}
+                  setQuery={setQuery}
+                  statusFilter={statusFilter}
+                  setStatusFilter={setStatusFilter}
+                  rentals={rentals}
+                  matches={matches}
+                  openRental={openRental}
+                />
+              )}
+              {effectiveScreen === "quote" && (
+                <>
+                  <button
+                    className="text-button back"
+                    onClick={() => go("rentals")}
+                  >
+                    <ArrowLeft size={17} />
+                    Voltar às reservas
+                  </button>
+                  {!customers.length || !items.length ? (
+                    <Empty title="Prepare seu primeiro orçamento">
+                      Cadastre pelo menos um cliente e um material antes de
+                      montar a proposta.
+                      <div className="empty-actions">
+                        <button
+                          className="secondary"
+                          onClick={() => go("customers")}
+                        >
+                          Cadastrar cliente
+                        </button>
+                        <button
+                          className="secondary"
+                          onClick={() => go("items")}
+                        >
+                          Cadastrar material
+                        </button>
+                      </div>
+                    </Empty>
+                  ) : (
+                    <RentalForm
+                      customers={customers}
+                      items={items}
+                      close={() => go("rentals")}
+                      done={(r) => {
+                        setSelected(r);
+                        setRevision((v) => v + 1);
+                        go("detail");
+                        setNotice(
+                          "Orçamento salvo. Confira os dados e confirme a reserva quando estiver tudo certo.",
+                        );
+                      }}
+                    />
+                  )}
+                </>
+              )}
+              {effectiveScreen === "detail" && selected && (
+                <RentalDetail
+                  rental={selected}
+                  user={user}
+                  back={() => go("rentals")}
+                  changed={(r) => {
+                    setSelected(r);
+                    setRevision((v) => v + 1);
+                    setNotice(
+                      r.status === "confirmed"
+                        ? "Reserva confirmada."
+                        : "Etapa atualizada.",
+                    );
+                  }}
+                />
+              )}
+              {effectiveScreen === "customers" && (
+                <CustomersScreen
+                  canQuote={canQuote}
+                  setForm={setForm}
+                  form={form}
+                  saved={saved}
+                  customers={customers}
+                  matches={matches}
+                  query={query}
+                  setQuery={setQuery}
+                />
+              )}
+              {effectiveScreen === "items" && (
+                <MaterialsScreen
+                  user={user}
+                  setEditingItem={setEditingItem}
+                  setForm={setForm}
+                  form={form}
+                  editingItem={editingItem}
+                  saved={saved}
+                  items={items}
+                  matches={matches}
+                  query={query}
+                  setQuery={setQuery}
+                />
+              )}
+              {effectiveScreen === "team" && (
+                <TeamScreen
+                  setForm={setForm}
+                  form={form}
+                  saved={saved}
+                  members={members}
+                />
+              )}
+              {effectiveScreen === "companies" && (
+                <CompaniesScreen
+                  setForm={setForm}
+                  setEditingCompany={setEditingCompany}
+                  form={form}
+                  editingCompany={editingCompany}
+                  saved={saved}
+                  companies={companies}
+                  signedIn={signedIn}
+                />
+              )}
+              {effectiveScreen === "audit" && <AuditScreen audit={audit} />}
+            </>
+          )}
+          <footer className="page-footer">
+            <span>Tonin Loca</span>
+            <span>
+              {isDemo
+                ? "Alterações salvas somente neste navegador. Não use dados reais."
+                : "Gestão de locações para festas e eventos."}
+            </span>
+          </footer>
+        </main>
+      </div>
+    </div>
+  );
+}
