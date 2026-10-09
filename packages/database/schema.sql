@@ -40,6 +40,7 @@ CREATE TABLE items (
 CREATE TABLE rentals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), number bigint GENERATED ALWAYS AS IDENTITY,
   organization_id uuid NOT NULL REFERENCES organizations(id), customer_id uuid NOT NULL,
+  fulfillment text NOT NULL DEFAULT 'pickup' CHECK(fulfillment IN ('pickup','delivery')),
   starts_at timestamptz NOT NULL, ends_at timestamptz NOT NULL CHECK(ends_at>starts_at),
   days integer NOT NULL CHECK(days>0), delivery integer NOT NULL DEFAULT 0 CHECK(delivery>=0),
   discount integer NOT NULL DEFAULT 0 CHECK(discount>=0), total bigint NOT NULL CHECK(total>=0),

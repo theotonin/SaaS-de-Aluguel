@@ -39,7 +39,7 @@ Quantidade disponível é calculada pelo pico de ocupação simultânea durante 
 
 ## Fluxo comercial
 
-Cliente com nome e contato; endereço obrigatório para entrega. Orçamento tem período, itens, quantidades, preço por diária, número de diárias, transporte e desconto. Diárias são calculadas por teto da duração em horas/24, com mínimo de uma. Valores em centavos; desconto não pode exceder subtotal mais transporte. Preços e descrições são fotografados no orçamento, preservando o histórico após alteração do catálogo.
+Cliente com nome e contato; orçamento distingue retirada pelo cliente de entrega pela locadora, sendo endereço obrigatório nesta última. Orçamento tem período, itens, quantidades, preço por diária, número de diárias, transporte e desconto. Diárias são calculadas por teto da duração em horas/24, com mínimo de uma. Valores em centavos; desconto não pode exceder subtotal mais transporte. Preços e descrições são fotografados no orçamento, preservando o histórico após alteração do catálogo. Registrar a entrega física só é permitido dentro do período reservado; fora dele, o primeiro incremento exige cancelamento antes da saída e um novo orçamento com as datas corretas.
 
 Estados: rascunho → orçamento enviado → confirmado → separado → entregue → devolvido → encerrado. Cancelamento permitido antes da entrega, com registro de motivo e tratamento manual de valores recebidos. Não transformar locação entregue em cancelada. Cada transição exige permissão e validação no servidor.
 
