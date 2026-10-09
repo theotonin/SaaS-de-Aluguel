@@ -15,7 +15,7 @@ Importe **theotonin/SaaS-de-Aluguel**. Os primeiros commits estão na branch **c
 | Output Directory | **`dist`** |
 | Node | 24.x |
 
-A pasta [`demo`](demo/README.md) é independente: tem instalação própria, apenas arquivos de frontend e nenhuma API ou banco. O `demo/vercel.json` já declara o build e a saída. A raiz do repositório é exclusivamente a versão comercial. Não adicione credenciais de banco ou senhas à demo. O endereço escolhido para divulgação é **https://saas-de-locacao-demo-static.vercel.app/**; o domínio só responderá após você configurar/publicar o projeto na Vercel. Este repositório não contrata nem configura domínio automaticamente.
+A pasta [`demo`](demo/README.md) é independente: tem instalação própria, apenas arquivos de frontend e nenhuma API ou banco. O `demo/vercel.json` já declara o build e a saída. A raiz do repositório é exclusivamente a versão comercial. Não adicione credenciais de banco ou senhas à demo. O endereço escolhido para divulgação é **https://saas-de-aluguel-demo.vercel.app/**; o domínio só responderá após você configurar/publicar o projeto na Vercel. Este repositório não contrata nem configura domínio automaticamente.
 
 A demo abre diretamente na locadora fictícia **Celebra Locações**. O seletor superior permite explorar locadora, operador e superadmin. É uma simulação identificada, sem login real, API ou banco. Os dados ficam no navegador; não use informações reais. “Restaurar exemplos” apaga apenas as alterações deste produto nesse navegador. Dados de empresas criadas na demo ficam separados no estado local. Essa simulação não é um controle de segurança.
 

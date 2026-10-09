@@ -19,7 +19,7 @@ Importe o repositório `theotonin/SaaS-de-Aluguel` e configure:
 | Node | 24.x |
 | Environment Variables | Nenhuma |
 
-O arquivo `vercel.json` desta pasta já contém a configuração. Ao mudar um projeto existente, remova overrides antigos de build/output e credenciais de banco. O domínio divulgado pode continuar sendo `saas-de-locacao-demo-static.vercel.app`.
+O arquivo `vercel.json` desta pasta já contém a configuração. Ao mudar um projeto existente, remova overrides antigos de build/output e credenciais de banco. O domínio divulgado pode continuar sendo `saas-de-aluguel-demo.vercel.app`.
 
 Para publicar sem GitHub, copie **esta pasta inteira**, incluindo `package.json`, `package-lock.json`, configs, `apps` e `packages`. Ela não usa arquivos acima de `demo`.
 

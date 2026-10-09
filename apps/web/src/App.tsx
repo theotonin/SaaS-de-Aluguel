@@ -1,3 +1,4 @@
+import { matchesSearch } from "./search";
 import type { Screen } from "./types";
 import { accessibleAccent } from "./branding";
 import { OverviewScreen } from "./screens/OverviewScreen";
@@ -174,17 +175,7 @@ export function App() {
   const navigation = admin
     ? adminNav
     : nav.filter((n) => n.id !== "team" || user.role === "admin");
-  const matches = (text: string) =>
-    text
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .includes(
-        query
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase(),
-      );
+  const matches = (text: string) => matchesSearch(text, query);
   const activeRentals = rentals.filter(
     (r) =>
       !["draft", "sent", "canceled", "closed", "returned"].includes(r.status),

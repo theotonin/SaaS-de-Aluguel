@@ -24,6 +24,9 @@ export function CustomersScreen({
   query: string;
   setQuery: (value: string) => void;
 }) {
+  const visible = customers.filter((c) =>
+    matches(`${c.name} ${c.phone} ${c.email}`),
+  );
   return (
     <>
       <Heading
@@ -47,8 +50,11 @@ export function CustomersScreen({
         <SearchInput
           value={query}
           set={setQuery}
-          placeholder="Buscar nome ou telefone"
+          placeholder="Buscar nome, telefone ou e-mail"
         />
+        <span className="muted" role="status">
+          {visible.length} de {customers.length} clientes
+        </span>
       </div>
       <section className="panel">
         {customers.length ? (
@@ -63,19 +69,17 @@ export function CustomersScreen({
                 </tr>
               </thead>
               <tbody>
-                {customers
-                  .filter((c) => matches(c.name + c.phone))
-                  .map((c) => (
-                    <tr key={c.id}>
-                      <td className="strong">{c.name}</td>
-                      <td>{c.phone}</td>
-                      <td>{c.email || "—"}</td>
-                      <td>{c.address || "Não informado"}</td>
-                    </tr>
-                  ))}
+                {visible.map((c) => (
+                  <tr key={c.id}>
+                    <td className="strong">{c.name}</td>
+                    <td>{c.phone}</td>
+                    <td>{c.email || "—"}</td>
+                    <td>{c.address || "Não informado"}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-            {!customers.some((c) => matches(c.name + c.phone)) && (
+            {!visible.length && (
               <p className="no-results">
                 Nenhum cliente encontrado para esta busca.
               </p>

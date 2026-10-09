@@ -230,17 +230,12 @@ strong {
   line-height: 1;
 }
 .brand-mark {
-  display: grid;
-  place-items: center;
-  color: var(--bg);
-  background: var(--accent);
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  font-size: 32px;
-  padding-bottom: 5px;
-  font-weight: 700;
+  color: var(--accent);
+  width: 25px;
+  height: 28px;
+  flex-shrink: 0;
 }
+
 .brand-product {
   font-size: 18px;
   font-weight: 400;
@@ -662,7 +657,11 @@ tbody tr:hover {
   padding: 0 14px;
   color: var(--muted);
 }
+.search > svg {
+  flex-shrink: 0;
+}
 .search input {
+  min-width: 0;
   border: 0;
   background: transparent;
   min-height: 46px;
@@ -672,6 +671,22 @@ tbody tr:hover {
 .search:focus-within {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+.search-clear {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.search-clear:hover {
+  color: var(--ink);
+  background: var(--elevated);
+}
+.search input::-webkit-search-cancel-button {
+  display: none;
 }
 .search input:focus-visible {
   outline: 0;

@@ -28,6 +28,7 @@ export function MaterialsScreen({
   query: string;
   setQuery: (value: string) => void;
 }) {
+  const visible = items.filter((i) => matches(`${i.name} ${i.category}`));
   return (
     <>
       <Heading
@@ -61,6 +62,9 @@ export function MaterialsScreen({
           set={setQuery}
           placeholder="Buscar material ou categoria"
         />
+        <span className="muted" role="status">
+          {visible.length} de {items.length} materiais
+        </span>
         <span className="muted">
           {items.length} de {user.organization?.item_limit} materiais do plano
         </span>
@@ -81,40 +85,38 @@ export function MaterialsScreen({
                 </tr>
               </thead>
               <tbody>
-                {items
-                  .filter((i) => matches(i.name + i.category))
-                  .map((i) => (
-                    <tr key={i.id}>
-                      <td>
-                        <span className="strong">{i.name}</span>
-                        <small className="cell-note">{i.description}</small>
-                      </td>
-                      <td>{i.category}</td>
-                      <td>{i.quantity} un.</td>
-                      <td className="numeric">{money(i.unit_price)}</td>
-                      <td>
-                        {user.role === "admin" && (
-                          <button
-                            className="text-button"
-                            onClick={() => {
-                              setEditingItem(i);
-                              setForm(true);
-                              window.scrollTo({
-                                top: 0,
-                                behavior: "instant",
-                              });
-                            }}
-                          >
-                            Editar
-                            <span className="sr-only"> {i.name}</span>
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                {visible.map((i) => (
+                  <tr key={i.id}>
+                    <td>
+                      <span className="strong">{i.name}</span>
+                      <small className="cell-note">{i.description}</small>
+                    </td>
+                    <td>{i.category}</td>
+                    <td>{i.quantity} un.</td>
+                    <td className="numeric">{money(i.unit_price)}</td>
+                    <td>
+                      {user.role === "admin" && (
+                        <button
+                          className="text-button"
+                          onClick={() => {
+                            setEditingItem(i);
+                            setForm(true);
+                            window.scrollTo({
+                              top: 0,
+                              behavior: "instant",
+                            });
+                          }}
+                        >
+                          Editar
+                          <span className="sr-only"> {i.name}</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-            {!items.some((i) => matches(i.name + i.category)) && (
+            {!visible.length && (
               <p className="no-results">
                 Nenhum material encontrado para esta busca.
               </p>

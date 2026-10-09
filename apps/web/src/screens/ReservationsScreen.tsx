@@ -27,6 +27,11 @@ export function ReservationsScreen({
   matches: (value: string) => boolean;
   openRental: (rental: Rental) => void;
 }) {
+  const visible = rentals.filter(
+    (r) =>
+      matches(`${r.customer_name} ${r.number}`) &&
+      (statusFilter === "all" || r.status === statusFilter),
+  );
   return (
     <>
       <Heading
@@ -71,16 +76,23 @@ export function ReservationsScreen({
               </option>
             ))}
         </select>
+        {(query || statusFilter !== "all") && (
+          <button
+            className="text-button"
+            onClick={() => {
+              setQuery("");
+              setStatusFilter("all");
+            }}
+          >
+            Limpar filtros
+          </button>
+        )}
+        <span className="muted" role="status">
+          {visible.length} de {rentals.length} reservas
+        </span>
       </div>
       <section className="panel">
-        <RentalTable
-          rentals={rentals.filter(
-            (r) =>
-              matches(r.customer_name + " " + r.number) &&
-              (statusFilter === "all" || r.status === statusFilter),
-          )}
-          open={openRental}
-        />
+        <RentalTable rentals={visible} open={openRental} />
       </section>
     </>
   );
