@@ -8,14 +8,14 @@ Importe **theotonin/SaaS-de-Aluguel**. Os primeiros commits estão na branch **c
 
 | Configuração | Valor |
 | --- | --- |
-| Root Directory | raiz do repositório, deixar vazio |
+| Root Directory | **`demo`** |
 | Framework | Vite |
 | Install Command | `npm ci` |
-| Build Command | `npm run build:vercel` |
-| Output Directory | `dist/web` |
+| Build Command | `npm run build` |
+| Output Directory | **`dist`** |
 | Node | 24.x |
 
-O `vercel.json` já declara o build e a saída. Não adicione credenciais de banco ou senhas à demo. O endereço escolhido para divulgação é **https://saas-de-locacao-demo-static.vercel.app/**; o domínio só responderá após você configurar/publicar o projeto na Vercel. Este repositório não contrata nem configura domínio automaticamente.
+A pasta [`demo`](demo/README.md) é independente: tem instalação própria, apenas arquivos de frontend e nenhuma API ou banco. O `demo/vercel.json` já declara o build e a saída. A raiz do repositório é exclusivamente a versão comercial. Não adicione credenciais de banco ou senhas à demo. O endereço escolhido para divulgação é **https://saas-de-locacao-demo-static.vercel.app/**; o domínio só responderá após você configurar/publicar o projeto na Vercel. Este repositório não contrata nem configura domínio automaticamente.
 
 A demo abre diretamente na locadora fictícia **Celebra Locações**. O seletor superior permite explorar locadora, operador e superadmin. É uma simulação identificada, sem login real, API ou banco. Os dados ficam no navegador; não use informações reais. “Restaurar exemplos” apaga apenas as alterações deste produto nesse navegador. Dados de empresas criadas na demo ficam separados no estado local. Essa simulação não é um controle de segurança.
 
@@ -36,7 +36,7 @@ Entregas físicas fora do período reservado são bloqueadas. Na primeira versã
 ## Executar a demo local
 
 ```sh
-npm ci
+npm ci --prefix demo
 npm run dev:demo
 ```
 
@@ -63,7 +63,7 @@ npm run dev:api
 npm run dev
 ```
 
-Na Vercel, o comando `npm run build:vercel` mantém a demo por padrão; defina `TONIN_DEPLOYMENT=production` em um projeto separado para habilitar frontend real e `/api/*`. Configure `DATABASE_PROVIDER=prisma`, `DATABASE_URL` pooled, `APP_ORIGIN` HTTPS e `DB_POOL_SIZE`. Credenciais administrativas são usadas somente em migrations/bootstrap, fora do build e da aplicação pública.
+Para a versão comercial na Vercel, deixe Root Directory vazio, use `npm run build` e saída `dist/web`. Ela sempre gera o frontend real com `/api/*`; a demo é publicada separadamente com Root Directory `demo`. Configure `DATABASE_PROVIDER=prisma`, `DATABASE_URL` pooled, `APP_ORIGIN` HTTPS e `DB_POOL_SIZE`. Credenciais administrativas são usadas somente em migrations/bootstrap, fora do build e da aplicação pública.
 
 O superadmin real cadastra empresas e seus administradores, planos, limites, identidade e suspensão. Cada locadora trabalha com seus próprios clientes, materiais, reservas e equipe. Não há senha padrão ou dados de demonstração no banco real.
 
@@ -72,6 +72,7 @@ No modo Prisma, a aplicação assume `loca_runtime` por transação. Se a URL do
 ## Estrutura
 
 ```text
+demo                      projeto estático independente, pronto para Vercel
 apps/api                  HTTP, autenticação e operações de locação
 apps/web/src/screens      telas separadas por responsabilidade
 apps/web/src/demo         simulação local exclusiva da demo
@@ -86,6 +87,8 @@ docs/superpowers          especificação e plano
 ## Verificação
 
 ```sh
+npm ci --prefix demo
+npm run demo:check
 npm run typecheck
 npm test
 npm run build
@@ -103,3 +106,5 @@ Em ambiente com navegador instalado, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` pode 
 Devolução parcial, avarias, kits, fotos e armazenamento persistente, caução, recebimentos, despesas, catálogo público e relatórios financeiros continuam pendentes. Também são necessários ciclo de recuperação/troca de senha, desativação da equipe e assinatura/trial com histórico antes da operação comercial completa. O cadastro atual de plano e suspensão é administrativo; não processa cobranças.
 
 As listas operacionais retornam até 2.000 registros; a paginação deverá preceder o crescimento além do piloto. Não há edição de período de reserva confirmada nesta entrega. Impressão não é contrato com assinatura eletrônica nem documento fiscal. Não há emissão fiscal, pagamento, envio de mensagens ou integração externa simulada.
+
+A interface da demo é sincronizada da versão comercial por `npm run demo:sync`; `npm run demo:check` verifica igualdade das telas, estilos, fontes e regras. A única substituição é o adaptador local de dados. Não edite manualmente as cópias em `demo/apps` e `demo/packages`.

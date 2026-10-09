@@ -68,10 +68,9 @@ Entre com o superadmin criado. Em **Empresas**, cadastre a locadora e seu admini
 
 Use **um projeto separado da demo**. A demo divulgada no site Tonin pode continuar sem banco.
 
-No projeto real, configure Node 24.x, raiz vazia, saída `dist/web` e Build Command **`npm run build:vercel`**. Remova qualquer override antigo `npm run build:demo` do painel. Cadastre no ambiente de **Production**:
+No projeto real, configure Node 24.x, raiz vazia, saída `dist/web` e Build Command **`npm run build`**. Remova qualquer override antigo `npm run build:demo` do painel. Cadastre no ambiente de **Production**:
 
 ```text
-TONIN_DEPLOYMENT=production
 DATABASE_PROVIDER=prisma
 DATABASE_URL=<URL pooled privada>
 DB_POOL_SIZE=3
@@ -79,7 +78,7 @@ APP_ORIGIN=https://seu-dominio-definitivo
 NODE_ENV=production
 ```
 
-Não defina `VITE_DEMO=true`. O build seleciona o frontend real quando `TONIN_DEPLOYMENT=production`; nos demais projetos, o padrão é a demo. A função `api/[...path].ts` atende `/api/*` na mesma origem, reutiliza um pool por instância e recusa requisições de demo. Não precisa de servidor Express separado. Rotas do painel usam navegação interna; não há URLs de páginas adicionais que exijam fallback SPA.
+A raiz sempre gera o frontend comercial, independentemente de `VITE_DEMO`. A demo agora está em `demo/`, com instalação e configuração Vercel próprias, sem API nem banco; veja [o guia da demo](../demo/README.md). `TONIN_DEPLOYMENT` não é mais necessário. A função comercial `api/[...path].ts` atende `/api/*` na mesma origem e reutiliza um pool por instância. Não precisa de servidor Express separado. Rotas do painel usam navegação interna; não há URLs de páginas adicionais que exijam fallback SPA.
 
 Execute migrations e bootstrap **antes** de liberar o acesso, usando `DIRECT_URL` apenas no seu ambiente administrativo local ou em job de release protegido. Não configure `DIRECT_URL`, `ADMIN_PASSWORD` ou bootstrap no frontend, no build público ou em requisições. Não há migrations automáticas no startup.
 
