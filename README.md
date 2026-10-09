@@ -103,8 +103,18 @@ Em ambiente com navegador instalado, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` pode 
 
 ## Próximas entregas e limites
 
-Devolução parcial, avarias, kits, fotos e armazenamento persistente, caução, recebimentos, despesas, catálogo público e relatórios financeiros continuam pendentes. Também são necessários ciclo de recuperação/troca de senha, desativação da equipe e assinatura/trial com histórico antes da operação comercial completa. O cadastro atual de plano e suspensão é administrativo; não processa cobranças.
+Kits, fotos e armazenamento persistente, catálogo público e relatórios financeiros consolidados continuam pendentes. Também são necessários ciclo de recuperação/troca de senha, desativação da equipe e assinatura/trial com histórico antes da operação comercial completa. O cadastro atual de plano e suspensão é administrativo; não processa cobranças.
 
 As listas operacionais retornam até 2.000 registros; a paginação deverá preceder o crescimento além do piloto. Não há edição de período de reserva confirmada nesta entrega. Impressão não é contrato com assinatura eletrônica nem documento fiscal. Não há emissão fiscal, pagamento, envio de mensagens ou integração externa simulada.
 
 A interface da demo é sincronizada da versão comercial por `npm run demo:sync`; `npm run demo:check` verifica igualdade das telas, estilos, fontes e regras. A única substituição é o adaptador local de dados. Não edite manualmente as cópias em `demo/apps` e `demo/packages`.
+
+## Devoluções e financeiro
+
+Devoluções são conferidas por material, inclusive em partes. A quantidade com avaria faz parte do recebido e fica indisponível até uma liberação de manutenção com motivo. O histórico de retornos e reparos é preservado. Administrador e operador fazem a conferência física; administrador e atendente registram o financeiro. Despesas e reaberturas exigem administrador.
+
+O extrato da reserva separa pagamento, estorno, caução, despesa e cobrança adicional. Valores são centavos inteiros; correções geram outro lançamento, sem apagar registros anteriores. O encerramento exige todos os materiais recebidos, saldo e crédito zerados e caução devolvida. Uma manutenção pode continuar depois do encerramento: o material já voltou da posse do cliente, mas continua fora da capacidade disponível até a liberação. A reabertura exige justificativa e preserva o histórico.
+
+Um envio sem resposta mantém a chave original. A interface bloqueia novos lançamentos até confirmar o resultado; uma consulta sem resultado não comprova falha definitiva. Após recarregar a página, somente a referência é preservada na sessão do navegador, sem valores ou observações.
+
+Antes de publicar a aplicação comercial atualizada, faça backup e execute `npm run db:migrate` com a conexão administrativa direta já documentada. As migrations 003 e 004 adicionam os históricos e as políticas RLS; não devolvem automaticamente reservas existentes. O build não aplica migrations e nenhum banco real foi alterado nesta entrega. A demo continua independente em `/demo`, com dados fictícios e sem servidor ou banco.

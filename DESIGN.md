@@ -7,3 +7,5 @@ Tokens: fundo #151918; superfície #1e2421; elevada #28302b; texto #f2f5f0; apoi
 Navegação lateral no desktop, compacta e horizontal no celular; tabelas com rolagem contida. Estados vazios explicam a próxima ação. Estados de envio impedem duplicação; erros ficam junto ao formulário e preservam os valores. Foco visível e preferência de movimento reduzido respeitados.
 
 Sem operações fictícias: demonstração identificada, pagamentos somente registrados, links públicos somente quando efetivamente disponíveis. Sem indicadores falsos de atividade.
+
+Estrutura padronizada com Tonin Estoque: marca e empresa no cabeçalho global, navegação de 200px com divisor e intervalo de 32px no desktop; navegação horizontal abaixo de 1000px. Margens 32px desktop/20px celular. Controles fictícios acima do cabeçalho, sob “Perfis e opções”, com “Perfil simulado” e “Restaurar demonstração”.
