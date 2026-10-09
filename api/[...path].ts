@@ -5,11 +5,6 @@ let ready: ReturnType<typeof runtime> | undefined;
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (process.env.TONIN_DEPLOYMENT !== 'production') {
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'API indisponível na demonstração.' }));
-    return;
-  }
   try {
     ready ??= runtime(process.env, 'vercel').catch(error => { ready = undefined; throw error; });
     const { handler } = await ready;

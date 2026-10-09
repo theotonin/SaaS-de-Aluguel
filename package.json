@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "dev:demo": "VITE_DEMO=true vite --host 127.0.0.1",
+    "dev:demo": "npm --prefix demo run dev -- --host 127.0.0.1",
     "dev:api": "node --env-file-if-exists=.env --import tsx --watch apps/api/server.ts",
     "build": "tsc --noEmit && vite build",
-    "build:demo": "VITE_DEMO=true npm run build",
+    "build:demo": "npm --prefix demo run build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:browser": "playwright test",
@@ -19,8 +19,10 @@
     "admin:create": "node --env-file-if-exists=.env --import tsx scripts/create-admin.ts",
     "start": "node --env-file-if-exists=.env --import tsx apps/api/server.ts",
     "db:check": "node --env-file-if-exists=.env --import tsx scripts/check-database.ts",
-    "build:vercel": "node scripts/build-vercel.mjs",
-    "test:postgres": "node --env-file-if-exists=.env --import tsx --test tests/integration/*.test.ts"
+    "build:vercel": "npm run build",
+    "test:postgres": "node --env-file-if-exists=.env --import tsx --test tests/integration/*.test.ts",
+    "demo:sync": "node scripts/sync-demo.mjs",
+    "demo:check": "node scripts/sync-demo.mjs --check"
   },
   "dependencies": {
     "pg": "^8.16.3",

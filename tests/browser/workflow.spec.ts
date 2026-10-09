@@ -3,6 +3,10 @@ import { test, expect } from "@playwright/test";
 test("customer, material, quote and confirmation work through the demo interface", async ({
   page,
 }) => {
+  const apiRequests: string[] = [];
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url());
+  });
   await page.goto("/");
   await expect(page.getByText("Demonstração · dados fictícios")).toBeVisible();
   await page.getByRole("button", { name: "Clientes", exact: true }).click();
@@ -49,6 +53,7 @@ test("customer, material, quote and confirmation work through the demo interface
   await expect(
     page.getByRole("cell", { name: "Cliente do teste", exact: true }),
   ).toBeVisible();
+  expect(apiRequests).toEqual([]);
 });
 
 test("mobile navigation and superadmin stay usable without page overflow", async ({

@@ -1,0 +1,8 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+export default defineConfig({
+  plugins: [react()],
+  root: 'apps/web',
+  define: { 'import.meta.env.VITE_DEMO': 'true' },
+  build: { outDir: '../../dist', emptyOutDir: true },
+});

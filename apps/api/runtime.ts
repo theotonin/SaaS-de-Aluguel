@@ -8,7 +8,7 @@ export async function runtime(env: Record<string, string | undefined>, platform?
   if (!env.APP_ORIGIN) throw new Error('Defina APP_ORIGIN.');
   let url: URL;
   try { url = new URL(env.APP_ORIGIN); } catch { throw new Error('APP_ORIGIN inválida.'); }
-  const production = env.NODE_ENV === 'production' || env.TONIN_DEPLOYMENT === 'production';
+  const production = env.NODE_ENV === 'production';
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
     throw new Error('APP_ORIGIN deve conter apenas a origem, como https://loca.exemplo.com.');
   if (production && url.protocol !== 'https:') throw new Error('APP_ORIGIN de produção deve usar HTTPS.');

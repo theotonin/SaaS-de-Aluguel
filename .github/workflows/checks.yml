@@ -39,11 +39,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm ci --prefix demo
+      - run: npm run demo:check
       - run: npm test
       - run: npm run build
       - run: npm run build:demo
-      - run: npm run build:vercel
-        env:
-          TONIN_DEPLOYMENT: production
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
