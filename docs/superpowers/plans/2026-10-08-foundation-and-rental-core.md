@@ -58,3 +58,7 @@ Node >=24; interface em português, BRL, America/Sao_Paulo. Cores e fonte do DES
 ## Próximos incrementos
 
 Kits, fotos persistentes, devolução parcial, caução, despesas e catálogo público têm planos próprios após esta fundação. Não expor controles que prometem funções ainda não implementadas.
+
+## Estado da execução em 08/10/2026
+
+Itens 1–4 implementados e verificados. A navegação do item 4 foi executada na demonstração local; autenticação e permissões reais foram verificadas no teste HTTP com PGlite. A distinção entre esses ambientes está documentada, sem afirmar navegação com PostgreSQL externo. Item 5 finaliza documentação, commits e envio ao repositório. Revisão independente registrada em `docs/verification.md`.
