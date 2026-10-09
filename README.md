@@ -11,7 +11,7 @@ Importe **theotonin/SaaS-de-Aluguel**. Os primeiros commits estão na branch **c
 | Root Directory | raiz do repositório, deixar vazio |
 | Framework | Vite |
 | Install Command | `npm ci` |
-| Build Command | `npm run build:demo` |
+| Build Command | `npm run build:vercel` |
 | Output Directory | `dist/web` |
 | Node | 24.x |
 
@@ -50,16 +50,24 @@ npm run build:demo
 
 Requer Node 24+ e PostgreSQL. `npm run dev` e `npm run build` produzem o frontend real, que solicita login; não são a demo.
 
-1. Copie `.env.example` para `.env` e preencha credenciais próprias. Não envie esse arquivo ao Git.
-2. Prepare um banco exclusivo do produto e uma conexão administrativa para migrations. O script inicial precisa poder criar o papel `loca_runtime`; em provedor gerenciado, prepare esse papel previamente se a conta não tiver CREATEROLE.
-3. Execute `npm run db:migrate` com `DATABASE_ADMIN_URL`. Migrations têm registro e bloqueio para evitar execução simultânea.
-4. Configure uma senha exclusiva e LOGIN para `loca_runtime` no ambiente do banco; preencha `DATABASE_URL` com esse acesso. Nunca utilize o proprietário ou superusuário na API. O startup recusa role diferente, BYPASSRLS e proteção RLS ausente.
-5. Defina `ADMIN_EMAIL` e `ADMIN_PASSWORD` exclusivos, execute `npm run admin:create` e remova a senha do ambiente depois. Não há usuário ou senha padrão.
-6. Execute `npm run dev:api` e, em outro terminal, `npm run dev`. `APP_ORIGIN` deve corresponder exatamente à origem usada no navegador; por exemplo, `http://localhost:5173`.
+O projeto está preparado para **Prisma Postgres**, usando URL pooled na API e URL direct nas migrations. Siga o guia completo em [docs/prisma-postgres.md](docs/prisma-postgres.md), que explica conexão, criação do superadmin e publicação real na Vercel.
 
-Em produção, sirva `dist/web` e encaminhe `/api` para a API na mesma origem. Configure `NODE_ENV=production`, `APP_ORIGIN=https://seu-endereco` e HTTPS. `npm start` executa a API, que escuta em `127.0.0.1:3001`; o proxy fica no mesmo servidor. O processo precisa das dependências de execução e do carregador TypeScript `tsx` instalado. Não execute o build de demo para clientes reais.
+```sh
+# Após copiar .env.example para .env e preencher suas URLs e dados administrativos:
+npm ci
+npm run db:migrate
+npm run admin:create
+npm run db:check
+npm run dev:api
+# Em outro terminal:
+npm run dev
+```
 
-Atrás de proxy controlado, configure `TRUST_PROXY_ADDRESS` com o IP exato do proxy. Ele deve **sobrescrever** `X-Forwarded-For` com um único IP do cliente; não reaproveite o header recebido do visitante. Headers encaminhados de outros endereços são ignorados. Sem essa configuração, o limite de login identifica a conexão direta e pode agrupar clientes atrás do proxy.
+Na Vercel, o comando `npm run build:vercel` mantém a demo por padrão; defina `TONIN_DEPLOYMENT=production` em um projeto separado para habilitar frontend real e `/api/*`. Configure `DATABASE_PROVIDER=prisma`, `DATABASE_URL` pooled, `APP_ORIGIN` HTTPS e `DB_POOL_SIZE`. Credenciais administrativas são usadas somente em migrations/bootstrap, fora do build e da aplicação pública.
+
+O superadmin real cadastra empresas e seus administradores, planos, limites, identidade e suspensão. Cada locadora trabalha com seus próprios clientes, materiais, reservas e equipe. Não há senha padrão ou dados de demonstração no banco real.
+
+No modo Prisma, a aplicação assume `loca_runtime` por transação. Se a URL do provedor usar uma credencial administrativa, ela continua privilegiada no servidor: esse modo não substitui uma credencial de banco realmente restrita contra SQL arbitrário/processo comprometido. A configuração convencional com login restrito continua disponível. Veja os detalhes no guia.
 
 ## Estrutura
 
@@ -86,7 +94,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Os testes SQL executam o schema PostgreSQL real em **PGlite** e os testes HTTP usam um servidor temporário com esse banco embarcado. Isso valida SQL, constraints, isolamento, rollback e fluxo HTTP; **não comprova concorrência entre conexões independentes em PostgreSQL de produção**. Antes de liberar clientes reais, testar confirmações concorrentes com o papel runtime em PostgreSQL externo, restauração de backup e implantação HTTPS. A revisão independente do primeiro incremento está em `docs/verification.md`.
+Os testes SQL executam o schema PostgreSQL real em **PGlite** e os testes HTTP usam um servidor temporário com esse banco embarcado. Isso valida SQL, constraints, isolamento, rollback e fluxo HTTP; **não comprova concorrência entre conexões independentes em PostgreSQL de produção**. O teste adicional `npm run test:postgres` usa PostgreSQL TCP descartável para confirmar isolamento e disputa de capacidade entre conexões independentes. Antes de liberar clientes reais, validar a instância Prisma configurada, restauração de backup e implantação HTTPS. A revisão independente do primeiro incremento está em `docs/verification.md`.
 
 Em ambiente com navegador instalado, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` pode indicar o executável. Com a demo aberta, `node scripts/capture.mjs` captura quatro telas em 390/1440px; resultados ficam em `.local/screens`, fora do Git.
 

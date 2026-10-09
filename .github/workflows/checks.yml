@@ -5,6 +5,30 @@ on:
 permissions:
   contents: read
 jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: loca_test
+          POSTGRES_PASSWORD: local_ci_only
+          POSTGRES_DB: loca_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loca_test -d loca_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:postgres
+        env:
+          TEST_DATABASE_ADMIN_URL: postgres://loca_test:local_ci_only@localhost:5432/loca_test
   check:
     runs-on: ubuntu-latest
     steps:
@@ -18,5 +42,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build:demo
+      - run: npm run build:vercel
+        env:
+          TONIN_DEPLOYMENT: production
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
